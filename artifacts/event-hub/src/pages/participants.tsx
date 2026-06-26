@@ -1,390 +1,524 @@
 import { useState } from "react";
-import { useListParticipants, useGetParticipantEvents } from "@workspace/api-client-react";
+import {
+  useAdminListParticipants,
+  useAdminSearchParticipants,
+  useAdminGetParticipant,
+  useAdminCreateParticipant,
+  useAdminChangeParticipantPhone,
+  useAdminAddParticipantToEvent,
+  useListEvents,
+  getAdminListParticipantsQueryKey,
+  getAdminGetParticipantQueryKey,
+  getAdminSearchParticipantsQueryKey,
+  type Participant,
+} from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Star, Users, Medal, Share2, ChevronDown, ChevronUp, Calendar, MapPin, Loader2, Copy, Check } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Trophy, Star, Users, Share2, Loader2, Search, Plus,
+  Phone, Mail, Calendar, ChevronDown, ChevronUp, UserCircle, Download,
+} from "lucide-react";
 import { format } from "date-fns";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  cycling: "🚴 Cycling",
-  hiking: "🥾 Hiking",
-  "summer-night": "🌙 Summer Night",
-  walking: "🚶 Walking",
-};
-
 const STATUS_COLORS: Record<string, string> = {
-  upcoming: "bg-blue-50 text-blue-700",
-  ongoing: "bg-green-50 text-green-700",
-  completed: "bg-slate-100 text-slate-600",
-  cancelled: "bg-red-50 text-red-600",
+  confirmed: "bg-green-100 text-green-800",
+  pending: "bg-amber-100 text-amber-800",
+  waitlist: "bg-blue-100 text-blue-800",
+  cancelled: "bg-red-100 text-red-800",
 };
 
-function rankIcon(rank: number) {
-  if (rank === 1) return <Trophy className="w-5 h-5 text-amber-500" />;
-  if (rank === 2) return <Medal className="w-5 h-5 text-slate-400" />;
-  if (rank === 3) return <Medal className="w-5 h-5 text-amber-700" />;
-  return (
-    <span className="w-5 h-5 flex items-center justify-center text-xs font-bold text-muted-foreground">
-      {rank}
-    </span>
-  );
-}
+// ─── Participant Profile Panel ────────────────────────────────────────────────
 
-function pointsToTier(points: number): { label: string; color: string } {
-  if (points >= 10) return { label: "Elite", color: "bg-purple-100 text-purple-800" };
-  if (points >= 5) return { label: "Gold", color: "bg-amber-100 text-amber-800" };
-  if (points >= 3) return { label: "Silver", color: "bg-slate-100 text-slate-700" };
-  return { label: "Bronze", color: "bg-orange-100 text-orange-800" };
-}
+function ParticipantProfile({ participant: baseParticipant, onClose }: { participant: Participant; onClose: () => void }) {
+  const phone = baseParticipant.phone ?? null;
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [addToEventOpen, setAddToEventOpen] = useState(false);
+  const [changePhoneOpen, setChangePhoneOpen] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [addStatus, setAddStatus] = useState("confirmed");
 
-function CopyInviteButton({ link }: { link: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <button
-      onClick={handleCopy}
-      title="Copy invite link"
-      className="inline-flex items-center gap-1 text-xs bg-primary/10 hover:bg-primary/20 text-primary px-2 py-1 rounded transition-colors shrink-0"
-    >
-      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-      {copied ? "Copied!" : "Invite link"}
-    </button>
-  );
-}
+  const { data, isLoading } = useAdminGetParticipant(encodeURIComponent(phone ?? ""), {
+    query: { enabled: !!phone },
+  });
+  const { data: events } = useListEvents();
 
-function EventHistoryRow({ email }: { email: string }) {
-  const { data: events, isLoading } = useGetParticipantEvents(encodeURIComponent(email));
+  const changePhoneMutation = useAdminChangeParticipantPhone({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Phone updated" });
+        setChangePhoneOpen(false);
+        setNewPhone("");
+        queryClient.invalidateQueries({ queryKey: getAdminListParticipantsQueryKey() });
+        onClose();
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  const addToEventMutation = useAdminAddParticipantToEvent({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Participant added to event" });
+        setAddToEventOpen(false);
+        setSelectedEventId("");
+        queryClient.invalidateQueries({ queryKey: getAdminGetParticipantQueryKey(encodeURIComponent(phone)) });
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      },
+    },
+  });
 
   if (isLoading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  }
+
+  // Use detailed data if available, fall back to base participant for phoneless records
+  const participant = data?.participant ?? baseParticipant;
+  const registrations = data?.registrations ?? [];
+
+  if (!phone && !data) {
+    // Show basic info + set phone form for phoneless participants
     return (
-      <div className="flex items-center gap-2 py-4 px-5 text-sm text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading event history…
+      <div className="space-y-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          ⚠️ This participant has no phone number. Set one below to unlock full profile features.
+        </div>
+        <div className="text-sm space-y-1">
+          <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{participant.name}</span></div>
+          <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{participant.email}</span></div>
+        </div>
+        <div>
+          <Label>Assign Phone Number</Label>
+          <Input className="mt-1" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+962 7X XXX XXXX" />
+        </div>
+        <Button
+          disabled={!newPhone.trim() || changePhoneMutation.isPending}
+          onClick={() => {
+            // Use the participant's email as a stand-in; API needs phone but let the admin know
+            toast({ title: "Cannot set phone without existing phone", description: "Contact the API admin to set an initial phone for phoneless participants.", variant: "destructive" });
+          }}
+        >
+          Save Phone
+        </Button>
       </div>
     );
   }
 
-  if (!events || events.length === 0) {
-    return (
-      <div className="py-4 px-5 text-sm text-muted-foreground italic">No event history found.</div>
-    );
-  }
-
   return (
-    <div className="px-5 pb-4 grid sm:grid-cols-2 gap-2">
-      {events.map((e) => {
-        const inviteLink = e.referralToken && e.registrationToken
-          ? `${window.location.origin}${import.meta.env.BASE_URL}r/${e.registrationToken}?ref=${e.referralToken}`
-          : null;
+    <div className="space-y-5">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-muted/40 rounded-xl p-3 text-center">
+          <div className="text-xs text-muted-foreground mb-0.5">Points</div>
+          <div className="text-xl font-bold text-amber-600">{participant.totalPoints}</div>
+        </div>
+        <div className="bg-muted/40 rounded-xl p-3 text-center">
+          <div className="text-xs text-muted-foreground mb-0.5">Events</div>
+          <div className="text-xl font-bold">{participant.totalEvents}</div>
+        </div>
+        <div className="bg-muted/40 rounded-xl p-3 text-center">
+          <div className="text-xs text-muted-foreground mb-0.5">Referrals</div>
+          <div className="text-xl font-bold text-blue-600">{participant.referralCount}</div>
+        </div>
+      </div>
 
-        return (
-          <div
-            key={`${e.id}-${e.registeredAt}`}
-            className="flex items-start gap-3 bg-muted/30 rounded-xl p-3 border border-border/50"
+      {/* Contact */}
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Phone className="w-3.5 h-3.5 shrink-0" />
+          <span>{participant.phone ?? "No phone"}</span>
+          <Button
+            variant="ghost" size="sm"
+            className="h-6 px-2 text-xs ml-auto"
+            onClick={() => setChangePhoneOpen(true)}
           >
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                <span className="text-xs text-muted-foreground">{CATEGORY_LABELS[e.category] ?? e.category}</span>
-                <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[e.status] ?? "bg-muted text-muted-foreground"}`}
-                >
-                  {e.status}
+            Change
+          </Button>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Mail className="w-3.5 h-3.5 shrink-0" />
+          <span>{participant.email}</span>
+        </div>
+        {participant.emergencyContactName && (
+          <div className="text-xs text-muted-foreground">
+            Emergency: {participant.emergencyContactName}
+            {participant.emergencyContactPhone && ` · ${participant.emergencyContactPhone}`}
+          </div>
+        )}
+        {participant.waiverAcceptedAt && (
+          <div className="text-xs text-green-700">
+            ✓ Waiver accepted {format(new Date(participant.waiverAcceptedAt), "MMM d, yyyy")}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <Button size="sm" className="flex-1" onClick={() => setAddToEventOpen(true)}>
+          <Plus className="w-3.5 h-3.5 mr-1" /> Add to Event
+        </Button>
+      </div>
+
+      {/* Registration history */}
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Event History</div>
+        {registrations.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">No registrations yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {registrations.map((r) => (
+              <div key={r.id} className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2">
+                <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{r.eventTitle}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {format(new Date(r.eventDate), "MMM d, yyyy")} · reg {format(new Date(r.registeredAt), "MMM d")}
+                  </div>
+                </div>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] ?? "bg-muted text-muted-foreground"}`}>
+                  {r.status}
                 </span>
-                {e.registrationStatus === "pending" && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
-                    pending
-                  </span>
-                )}
-                {e.registrationStatus === "waitlist" && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
-                    waitlist
-                  </span>
-                )}
-                {e.registrationStatus === "cancelled" && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
-                    cancelled
-                  </span>
-                )}
               </div>
-              <div className="font-medium text-sm truncate">{e.title}</div>
-              <div className="flex flex-wrap gap-x-3 mt-1 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {format(new Date(e.date), "MMM d, yyyy")}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />
-                  {e.location}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs font-semibold text-amber-700">+{e.pointsValue} pts</span>
-                {inviteLink && <CopyInviteButton link={inviteLink} />}
-              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add to event dialog */}
+      <Dialog open={addToEventOpen} onOpenChange={setAddToEventOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Add to Event</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Event</Label>
+              <Select value={selectedEventId} onValueChange={setSelectedEventId}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Select an event" /></SelectTrigger>
+                <SelectContent>
+                  {events?.map((e) => (
+                    <SelectItem key={e.id} value={String(e.id)}>
+                      {e.title} — {format(new Date(e.date), "MMM d")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={addStatus} onValueChange={setAddStatus}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="waitlist">Waitlist</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                disabled={!selectedEventId || addToEventMutation.isPending}
+                onClick={() => {
+                  if (!participant.phone) {
+                    toast({ title: "Participant has no phone number", variant: "destructive" });
+                    return;
+                  }
+                  addToEventMutation.mutate({
+                    phone: encodeURIComponent(participant.phone),
+                    data: { eventId: parseInt(selectedEventId), status: addStatus as "confirmed" | "pending" | "waitlist" | "cancelled" },
+                  });
+                }}
+              >
+                {addToEventMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Add
+              </Button>
+              <Button variant="outline" onClick={() => setAddToEventOpen(false)}>Cancel</Button>
             </div>
           </div>
-        );
-      })}
+        </DialogContent>
+      </Dialog>
+
+      {/* Change phone dialog */}
+      <Dialog open={changePhoneOpen} onOpenChange={setChangePhoneOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Change Phone Number</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">Current: <span className="font-medium text-foreground">{participant.phone ?? "none"}</span></p>
+            <div>
+              <Label>New Phone Number</Label>
+              <Input className="mt-1" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+962 7X XXX XXXX" />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                disabled={!newPhone.trim() || changePhoneMutation.isPending}
+                onClick={() => {
+                  if (!participant.phone) return;
+                  changePhoneMutation.mutate({
+                    phone: encodeURIComponent(participant.phone),
+                    data: { newPhone },
+                  });
+                }}
+              >
+                {changePhoneMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Update Phone
+              </Button>
+              <Button variant="outline" onClick={() => setChangePhoneOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
+// ─── Main Admin Participants Page ─────────────────────────────────────────────
+
 export default function ParticipantsPage() {
-  const { data: participants, isLoading } = useListParticipants();
-  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"points" | "referrers">("points");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", email: "", phone: "", emergencyContactName: "", emergencyContactPhone: "" });
+  const [page, setPage] = useState(1);
 
-  const totalPoints = participants?.reduce((s, p) => s + p.totalPoints, 0) ?? 0;
-  const totalReferrals = participants?.reduce((s, p) => s + (p.referralCount ?? 0), 0) ?? 0;
-  const topParticipant = participants?.[0];
-  const topReferrer = [...(participants ?? [])].sort((a, b) => (b.referralCount ?? 0) - (a.referralCount ?? 0))[0];
+  const isSearching = searchQuery.trim().length > 0;
 
-  const toggleExpand = (email: string) => {
-    setExpandedEmail((prev) => (prev === email ? null : email));
-  };
+  const { data: listData, isLoading: listLoading } = useAdminListParticipants(
+    { page, limit: 50 },
+    { query: { enabled: !isSearching, queryKey: getAdminListParticipantsQueryKey({ page, limit: 50 }) } }
+  );
 
-  const sortedByReferrals = [...(participants ?? [])].sort((a, b) => (b.referralCount ?? 0) - (a.referralCount ?? 0));
-  const referrers = sortedByReferrals.filter((p) => (p.referralCount ?? 0) > 0);
+  const { data: searchResults, isLoading: searchLoading } = useAdminSearchParticipants(
+    { q: searchQuery },
+    { query: { enabled: isSearching, queryKey: getAdminSearchParticipantsQueryKey({ q: searchQuery }) } }
+  );
+
+  const createMutation = useAdminCreateParticipant({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Participant created" });
+        setCreateOpen(false);
+        setCreateForm({ name: "", email: "", phone: "", emergencyContactName: "", emergencyContactPhone: "" });
+        queryClient.invalidateQueries({ queryKey: getAdminListParticipantsQueryKey() });
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed to create";
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  const participants = isSearching ? (searchResults ?? []) : (listData?.participants ?? []);
+  const total = listData?.total ?? 0;
+  const isLoading = isSearching ? searchLoading : listLoading;
+
+  const exportUrl = `/api/admin/participants/export`;
 
   return (
     <Layout>
       <div className="container py-12">
-        <div className="mb-10">
-          <h1 className="font-display text-4xl font-bold tracking-tight">Participants</h1>
-          <p className="text-muted-foreground mt-1">
-            Loyalty leaderboard — registrations earn points, and so does inviting friends. Click a row to see event history and copy invite links.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10">
+          <div>
+            <h1 className="font-display text-4xl font-bold tracking-tight">Participants</h1>
+            <p className="text-muted-foreground mt-1">Search and manage all participants. Click a row to view their profile.</p>
+          </div>
+          <div className="flex gap-2">
+            <a href={exportUrl} download>
+              <Button variant="outline" size="lg" className="gap-2">
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+            </a>
+            <Button size="lg" className="gap-2" onClick={() => setCreateOpen(true)}>
+              <Plus className="w-4 h-4" /> Create Participant
+            </Button>
+          </div>
         </div>
 
-        {participants && participants.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+        {/* Stats */}
+        {!isSearching && listData && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
             <div className="bg-card border rounded-xl p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                <Users className="w-3.5 h-3.5" /> Members
+                <Users className="w-3.5 h-3.5" /> Total
+              </div>
+              <div className="text-3xl font-bold">{total}</div>
+            </div>
+            <div className="bg-card border rounded-xl p-4">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
+                <Star className="w-3.5 h-3.5" /> This Page
               </div>
               <div className="text-3xl font-bold">{participants.length}</div>
             </div>
             <div className="bg-card border rounded-xl p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                <Star className="w-3.5 h-3.5" /> Points Earned
+                <Trophy className="w-3.5 h-3.5" /> Top Points
               </div>
-              <div className="text-3xl font-bold">{totalPoints.toLocaleString()}</div>
-            </div>
-            <div className="bg-card border rounded-xl p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                <Share2 className="w-3.5 h-3.5" /> Total Referrals
+              <div className="text-3xl font-bold">
+                {participants.reduce((m, p) => Math.max(m, p.totalPoints), 0)}
               </div>
-              <div className="text-3xl font-bold">{totalReferrals.toLocaleString()}</div>
-            </div>
-            <div className="bg-card border rounded-xl p-4">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                <Trophy className="w-3.5 h-3.5" /> Top Member
-              </div>
-              <div className="text-xl font-bold truncate">{topParticipant?.name ?? "—"}</div>
-              {topParticipant && (
-                <div className="text-sm text-muted-foreground">{topParticipant.totalPoints} pts</div>
-              )}
             </div>
           </div>
         )}
 
+        {/* Search */}
+        <div className="relative mb-6 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+            placeholder="Search by name, email, or phone…"
+            className="pl-9"
+          />
+        </div>
+
+        {/* Table */}
         {isLoading ? (
-          <div className="py-20 text-center text-muted-foreground">Loading…</div>
-        ) : participants && participants.length > 0 ? (
+          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+        ) : participants.length > 0 ? (
           <>
-            {/* Tab switcher */}
-            <div className="flex gap-1 bg-muted rounded-xl p-1 mb-6 w-fit">
-              <button
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === "points" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => setActiveTab("points")}
-              >
-                🏅 Points Leaderboard
-              </button>
-              <button
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === "referrers" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => setActiveTab("referrers")}
-              >
-                <Share2 className="w-3.5 h-3.5" /> Top Referrers
-                {totalReferrals > 0 && (
-                  <span className="bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded-full font-semibold">
-                    {totalReferrals}
-                  </span>
-                )}
-              </button>
+            <div className="border rounded-2xl overflow-hidden bg-card shadow-sm divide-y">
+              {participants.map((p) => (
+                <button
+                  key={p.id}
+                  className="w-full text-left flex items-center gap-4 px-5 py-4 hover:bg-muted/40 transition-colors"
+                  onClick={() => setSelectedParticipant(p)}
+                >
+                  <UserCircle className="w-8 h-8 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{p.name}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
+                      <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {p.email}</span>
+                      {p.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {p.phone}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="text-right hidden sm:block">
+                      <div className="text-xs text-muted-foreground">Events</div>
+                      <div className="font-semibold">{p.totalEvents}</div>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <div className="text-xs text-muted-foreground">Referrals</div>
+                      <div className="font-semibold text-blue-600">{p.referralCount}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">Points</div>
+                      <div className="font-bold text-amber-600">{p.totalPoints}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
 
-            {activeTab === "points" && (
-              <>
-                <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-purple-200 inline-block" /> Elite 10+ pts</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-200 inline-block" /> Gold 5+ pts</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-slate-200 inline-block" /> Silver 3+ pts</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-orange-200 inline-block" /> Bronze 1+ pts</span>
-                  <span className="inline-flex items-center gap-1 ml-auto"><Share2 className="w-3 h-3" /> = friends referred</span>
+            {/* Pagination */}
+            {!isSearching && total > 50 && (
+              <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
+                <span>Showing {(page - 1) * 50 + 1}–{Math.min(page * 50, total)} of {total}</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+                  <Button variant="outline" size="sm" disabled={page * 50 >= total} onClick={() => setPage((p) => p + 1)}>Next</Button>
                 </div>
-                <div className="border rounded-2xl overflow-hidden bg-card shadow-sm divide-y">
-                  {participants.map((p, i) => {
-                    const tier = pointsToTier(p.totalPoints);
-                    const referrals = p.referralCount ?? 0;
-                    const isExpanded = expandedEmail === p.email;
-                    return (
-                      <div key={p.id}>
-                        <button
-                          className={`w-full text-left grid grid-cols-[40px_1fr_auto_auto_auto_auto_auto] gap-x-4 px-5 py-3.5 items-center transition-colors hover:bg-muted/40 ${i < 3 ? "bg-primary/[0.02]" : ""}`}
-                          onClick={() => toggleExpand(p.email)}
-                        >
-                          <div className="flex items-center justify-center">{rankIcon(i + 1)}</div>
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{p.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">{p.email}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Member since {format(new Date(p.joinedAt), "MMM yyyy")}
-                            </div>
-                          </div>
-                          <div className="text-right font-medium text-sm">{p.totalEvents}</div>
-                          <div className="text-right hidden sm:block">
-                            {referrals > 0 ? (
-                              <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                                <Share2 className="w-3 h-3" /> {referrals}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tier.color}`}>
-                              {tier.label}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-bold text-lg">{p.totalPoints}</span>
-                            <span className="text-xs text-muted-foreground ml-1">pts</span>
-                          </div>
-                          <div className="text-muted-foreground">
-                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </div>
-                        </button>
-
-                        {isExpanded && (
-                          <div className="border-t bg-muted/20">
-                            <div className="px-5 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Event History & Invite Links
-                            </div>
-                            <EventHistoryRow email={p.email} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {activeTab === "referrers" && (
-              <>
-                {referrers.length === 0 ? (
-                  <div className="text-center py-16 border rounded-2xl bg-card">
-                    <Share2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                    <h3 className="text-lg font-bold mb-1">No referrals yet</h3>
-                    <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-                      Send participants their personal invite links from the dashboard. When a friend registers through it, both earn bonus points.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Participants who have brought friends to your events. Expand a row to copy their invite links per event.
-                    </p>
-
-                    {/* Podium for top 3 */}
-                    {referrers.length >= 2 && (
-                      <div className="flex items-end justify-center gap-4 mb-8">
-                        {[referrers[1], referrers[0], referrers[2]].filter(Boolean).map((p, idx) => {
-                          const podiumRank = idx === 0 ? 2 : idx === 1 ? 1 : 3;
-                          const heights = { 1: "h-28", 2: "h-20", 3: "h-16" };
-                          const colors = {
-                            1: "bg-amber-100 border-amber-300",
-                            2: "bg-slate-100 border-slate-300",
-                            3: "bg-orange-50 border-orange-200",
-                          };
-                          return (
-                            <div key={p.id} className="flex flex-col items-center gap-2 flex-1 max-w-[180px]">
-                              <div className="text-center">
-                                <div className="font-semibold text-sm truncate">{p.name}</div>
-                                <div className="text-xs text-blue-600 font-bold flex items-center justify-center gap-1">
-                                  <Share2 className="w-3 h-3" /> {p.referralCount} referred
-                                </div>
-                              </div>
-                              <div className={`w-full rounded-t-xl border-2 ${colors[podiumRank as keyof typeof colors]} ${heights[podiumRank as keyof typeof heights]} flex items-center justify-center`}>
-                                <span className="text-2xl">{podiumRank === 1 ? "🥇" : podiumRank === 2 ? "🥈" : "🥉"}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <div className="border rounded-2xl overflow-hidden bg-card shadow-sm divide-y">
-                      {referrers.map((p, i) => {
-                        const isExpanded = expandedEmail === p.email;
-                        return (
-                          <div key={p.id}>
-                            <button
-                              className="w-full text-left flex items-center gap-4 px-5 py-4 hover:bg-muted/40 transition-colors"
-                              onClick={() => toggleExpand(p.email)}
-                            >
-                              <div className="flex items-center justify-center w-8 shrink-0">
-                                {rankIcon(i + 1)}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{p.name}</div>
-                                <div className="text-xs text-muted-foreground truncate">{p.email}</div>
-                              </div>
-                              <div className="flex items-center gap-3 shrink-0">
-                                <div className="text-center">
-                                  <div className="text-2xl font-bold text-blue-700">{p.referralCount}</div>
-                                  <div className="text-xs text-muted-foreground">friends</div>
-                                </div>
-                                <div className="text-center hidden sm:block">
-                                  <div className="text-lg font-bold">{p.totalPoints}</div>
-                                  <div className="text-xs text-muted-foreground">pts</div>
-                                </div>
-                                <div className="text-muted-foreground">
-                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </div>
-                              </div>
-                            </button>
-
-                            {isExpanded && (
-                              <div className="border-t bg-muted/20">
-                                <div className="px-5 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Event History & Invite Links
-                                </div>
-                                <EventHistoryRow email={p.email} />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </>
+              </div>
             )}
           </>
         ) : (
           <div className="text-center py-24 border rounded-2xl bg-card">
-            <Trophy className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-bold mb-2">No participants yet</h3>
-            <p className="text-muted-foreground max-w-sm mx-auto">
-              As people register for your events, they'll appear here with their earned points and referral count.
+            <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-xl font-bold mb-2">{isSearching ? "No results found" : "No participants yet"}</h3>
+            <p className="text-muted-foreground">
+              {isSearching ? "Try a different name, email, or phone number." : "Participants appear here as people register for events."}
             </p>
           </div>
         )}
       </div>
+
+      {/* Profile dialog */}
+      <Dialog open={!!selectedParticipant} onOpenChange={(o) => { if (!o) setSelectedParticipant(null); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCircle className="w-5 h-5" />
+              {selectedParticipant?.name ?? "Participant Profile"}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedParticipant && (
+            <ParticipantProfile
+              participant={selectedParticipant}
+              onClose={() => setSelectedParticipant(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create participant dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Create Participant</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Full Name <span className="text-destructive">*</span></Label>
+              <Input className="mt-1" value={createForm.name} onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))} placeholder="Full name" />
+            </div>
+            <div>
+              <Label>Email <span className="text-destructive">*</span></Label>
+              <Input className="mt-1" type="email" value={createForm.email} onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@example.com" />
+            </div>
+            <div>
+              <Label>Phone <span className="text-muted-foreground">(optional)</span></Label>
+              <Input className="mt-1" type="tel" value={createForm.phone} onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+962 7X XXX XXXX" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Emergency Contact</Label>
+                <Input className="mt-1" value={createForm.emergencyContactName} onChange={(e) => setCreateForm((f) => ({ ...f, emergencyContactName: e.target.value }))} placeholder="Name" />
+              </div>
+              <div>
+                <Label>Emergency Phone</Label>
+                <Input className="mt-1" value={createForm.emergencyContactPhone} onChange={(e) => setCreateForm((f) => ({ ...f, emergencyContactPhone: e.target.value }))} placeholder="+962..." />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                className="flex-1"
+                disabled={!createForm.name.trim() || !createForm.email.trim() || createMutation.isPending}
+                onClick={() => {
+                  createMutation.mutate({
+                    data: {
+                      name: createForm.name,
+                      email: createForm.email,
+                      phone: createForm.phone || undefined,
+                      emergencyContactName: createForm.emergencyContactName || undefined,
+                      emergencyContactPhone: createForm.emergencyContactPhone || undefined,
+                    },
+                  });
+                }}
+              >
+                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Create Participant
+              </Button>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

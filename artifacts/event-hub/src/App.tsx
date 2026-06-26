@@ -9,6 +9,10 @@ import CreateEvent from "@/pages/create-event";
 import RegisterPage from "@/pages/register";
 import SponsorsPage from "@/pages/sponsors";
 import ParticipantsPage from "@/pages/participants";
+import AdminEventTypesPage from "@/pages/admin-event-types";
+import AdminMediaBannersPage from "@/pages/admin-media-banners";
+import AdminCompletedEventsPage from "@/pages/admin-completed-events";
+import AdminAuditLogPage from "@/pages/admin-audit-log";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +24,10 @@ function Router() {
       <Route path="/admin/events/new" component={CreateEvent} />
       <Route path="/admin/sponsors" component={SponsorsPage} />
       <Route path="/admin/participants" component={ParticipantsPage} />
+      <Route path="/admin/event-types" component={AdminEventTypesPage} />
+      <Route path="/admin/media-banners" component={AdminMediaBannersPage} />
+      <Route path="/admin/completed-events" component={AdminCompletedEventsPage} />
+      <Route path="/admin/audit-log" component={AdminAuditLogPage} />
       <Route path="/r/:token" component={RegisterPage} />
       <Route component={NotFound} />
     </Switch>

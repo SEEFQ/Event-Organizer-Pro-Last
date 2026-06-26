@@ -1,0 +1,41 @@
+#3 - Admin Frontend — New Management Pages
+What & Why
+Add all new admin pages and dashboards: event type management, media banner management, completed events management, financial tracking per event, participant management (search/add/create), sponsor analytics reporting dashboard, audit log view, and Excel exports. All pages are gated behind the existing admin nav.
+
+Done looks like
+Event Types page (/admin/event-types): table of types with name, icon, archived status; inline create/edit/archive; event creation form uses a dropdown from this list instead of a hardcoded enum
+Media Banners page (/admin/media-banners): upload images or add video URLs; drag-to-reorder or up/down buttons; preview thumbnail; toggle active/inactive; delete
+Completed Events page (/admin/completed-events): add/edit/delete past event cards (title, type, description, cover image URL, date); reorder; toggle visible
+Financial Tracking: each event detail page (or a new /admin/events/{id}/financials tab) shows price, collected, discounts, net revenue; admin can edit collected + discount fields; overall dashboard shows totals across all events
+Participant Management page (/admin/participants): search box (phone or name); results table; click participant to see profile (events, points, referrals, emails); "Add to event" button opens a dialog to pick an event and set status=confirmed; "Create participant" form; "Change phone" button
+Sponsor Analytics page (update existing /admin/sponsors): remove link-click metric; show per-sponsor table with page views, registrations from page, approved registrations, conversion rate; expandable rows show per-event breakdown
+Audit Log page (/admin/audit-log): chronological table of all admin actions with actor, type, description, before/after values, timestamp; filterable by type
+Excel Export buttons: on participants list (per event) export button → download registrations_{event}.xlsx; on financials page export button → financials_{event}.xlsx; on sponsor analytics page export button → sponsor_report.xlsx
+Out of scope
+Public registration page (Task 2)
+Schema/API (Task 1)
+Steps
+Event type management — Create /admin/event-types page with full CRUD. Update the event create/edit form to use a GET /event-types dropdown instead of the hardcoded category enum.
+
+Media banner management — Create /admin/media-banners page. Support image URL entry and file upload (via existing storage/upload endpoint). Show a live preview thumbnail. Add reorder controls (up/down or drag). Toggle active/inactive and delete.
+
+Completed events management — Create /admin/completed-events page. Form: title, event type (text), short description, cover image URL or upload, date, visible toggle, display order. List shows cards in order with edit/delete.
+
+Financial tracking per event — Add a Financials tab or section to the event admin detail view. Show price per person, total collected, referral discounts, manual discounts, promo discounts, and computed net revenue. Admin can edit all money fields. Dashboard summary on /admin shows totals: total revenue across confirmed registrations, total discounts applied.
+
+Participant management — Create /admin/participants page. Search input queries GET /admin/participants/search?q=. Results show name, phone, email, points, events count. Click row → participant profile panel: list of registrations, points history, referral count, emergency contact, all emails. "Add to event" opens event picker + status selector (confirmed by default) → calls POST /admin/participants/{phone}/registrations. "Create new participant" form. "Change phone" edits phone without losing history.
+
+Sponsor analytics revamp — On the sponsors page, replace the link-clicks metric with: Page Views, Reg. Submissions, Approvals, Conversion Rate. Add an expandable per-event breakdown table under each sponsor card. Add a global "Sponsor Report" export button.
+
+Audit log page — Create /admin/audit-log page. Fetch GET /stats/activity (extended in Task 1 to include actor and before/after). Show as a filterable table: timestamp, actor, action type, description, entity. Paginate if long.
+
+Excel exports — Add Export buttons on: (a) each event's registration list, (b) the financials section, (c) the sponsor analytics page. Each triggers a GET /events/{id}/export or similar endpoint that returns an XLSX download using the exceljs or xlsx npm package on the server.
+
+Nav + routing — Add new pages to the admin nav and router: Event Types, Media Banners, Completed Events, Participants (already exists, extend), Financials (per-event), Audit Log.
+
+Relevant files
+artifacts/event-hub/src/App.tsx
+artifacts/event-hub/src/pages/sponsors.tsx
+artifacts/event-hub/src/pages/participants.tsx
+artifacts/event-hub/src/components/Layout.tsx
+lib/api-spec/openapi.yaml

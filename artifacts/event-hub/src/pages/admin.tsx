@@ -11,6 +11,11 @@ import {
   useRemoveEventSponsor,
   useListEventRegistrations,
   useUpdateRegistrationStatus,
+  useGetEventFinancials,
+  useUpdateEventFinancials,
+  getGetEventFinancialsQueryKey,
+  useGetFinancialsSummary,
+  getGetFinancialsSummaryQueryKey,
   EventInputCategory,
   EventInputDifficulty,
 } from "@workspace/api-client-react";
@@ -36,6 +41,7 @@ import {
 import {
   Loader2, Trash2, XCircle, Copy, Check, Link2, ImageIcon, Plus,
   Users, Calendar, BarChart3, Pencil, ChevronDown, ChevronUp, Store, Share2, X,
+  DollarSign, Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -532,6 +538,118 @@ function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; r
   );
 }
 
+// ─── Financials Panel ─────────────────────────────────────────────────────────
+
+function FinancialsPanel({ eventId }: { eventId: number }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: fin, isLoading } = useGetEventFinancials(eventId);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ pricePerPerson: "", totalCollected: "", referralDiscounts: "", manualDiscounts: "", promoDiscounts: "", notes: "" });
+
+  const updateMutation = useUpdateEventFinancials({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Financials updated" });
+        setEditing(false);
+        queryClient.invalidateQueries({ queryKey: getGetEventFinancialsQueryKey(eventId) });
+        queryClient.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
+      },
+      onError: () => toast({ title: "Update failed", variant: "destructive" }),
+    },
+  });
+
+  if (isLoading) return <div className="text-xs text-muted-foreground">Loading…</div>;
+
+  const startEdit = () => {
+    setForm({
+      pricePerPerson: String(fin?.pricePerPerson ?? 0),
+      totalCollected: String(fin?.totalCollected ?? 0),
+      referralDiscounts: String(fin?.referralDiscounts ?? 0),
+      manualDiscounts: String(fin?.manualDiscounts ?? 0),
+      promoDiscounts: String(fin?.promoDiscounts ?? 0),
+      notes: fin?.notes ?? "",
+    });
+    setEditing(true);
+  };
+
+  const handleSave = () => {
+    updateMutation.mutate({
+      id: eventId,
+      data: {
+        pricePerPerson: parseFloat(form.pricePerPerson) || 0,
+        totalCollected: parseFloat(form.totalCollected) || 0,
+        referralDiscounts: parseFloat(form.referralDiscounts) || 0,
+        manualDiscounts: parseFloat(form.manualDiscounts) || 0,
+        promoDiscounts: parseFloat(form.promoDiscounts) || 0,
+        notes: form.notes || undefined,
+      },
+    });
+  };
+
+  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  if (editing) {
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {[
+            ["pricePerPerson", "Price / person (JOD)"],
+            ["totalCollected", "Total collected"],
+            ["referralDiscounts", "Referral discounts"],
+            ["manualDiscounts", "Manual discounts"],
+            ["promoDiscounts", "Promo discounts"],
+          ].map(([k, label]) => (
+            <div key={k}>
+              <Label className="text-xs">{label}</Label>
+              <Input className="mt-0.5 h-8 text-sm" type="number" min={0} step={0.01} value={form[k as keyof typeof form]} onChange={(e) => set(k as keyof typeof form, e.target.value)} />
+            </div>
+          ))}
+        </div>
+        <div>
+          <Label className="text-xs">Notes</Label>
+          <Textarea className="mt-0.5 text-sm min-h-[60px]" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Optional notes…" />
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+            {updateMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />} Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <div className="bg-muted/40 rounded-lg px-3 py-2 text-center">
+          <div className="text-xs text-muted-foreground mb-0.5">Price / person</div>
+          <div className="font-bold">{fin?.pricePerPerson ?? 0} <span className="text-xs font-normal">JOD</span></div>
+        </div>
+        <div className="bg-green-50 border border-green-100 rounded-lg px-3 py-2 text-center">
+          <div className="text-xs text-green-700 mb-0.5">Collected</div>
+          <div className="font-bold text-green-700">{fin?.totalCollected ?? 0} <span className="text-xs font-normal">JOD</span></div>
+        </div>
+        <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-center">
+          <div className="text-xs text-red-600 mb-0.5">Discounts</div>
+          <div className="font-bold text-red-600">
+            {((fin?.referralDiscounts ?? 0) + (fin?.manualDiscounts ?? 0) + (fin?.promoDiscounts ?? 0)).toFixed(2)} <span className="text-xs font-normal">JOD</span>
+          </div>
+        </div>
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-center">
+          <div className="text-xs text-primary mb-0.5">Net Revenue</div>
+          <div className="font-bold text-primary">{fin?.netRevenue ?? 0} <span className="text-xs font-normal">JOD</span></div>
+        </div>
+      </div>
+      {fin?.notes && <p className="text-xs text-muted-foreground italic mb-3">{fin.notes}</p>}
+      <Button size="sm" variant="outline" className="gap-1.5 h-7" onClick={startEdit}>
+        <Pencil className="w-3 h-3" /> Edit Financials
+      </Button>
+    </div>
+  );
+}
+
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 
 export default function Admin() {
@@ -541,12 +659,14 @@ export default function Admin() {
   const [editingEvent, setEditingEvent] = useState<null | (typeof events extends (infer T)[] ? T : never)>(null);
   const [expandedSponsors, setExpandedSponsors] = useState<Set<number>>(new Set());
   const [expandedRegistrations, setExpandedRegistrations] = useState<Set<number>>(new Set());
+  const [expandedFinancials, setExpandedFinancials] = useState<Set<number>>(new Set());
 
   const { data: events, isLoading } = useListEvents({}, {
     query: { queryKey: getListEventsQueryKey() }
   });
 
   const { data: stats } = useGetStats();
+  const { data: financialsSummary } = useGetFinancialsSummary();
 
   const deleteMutation = useDeleteEvent({
     mutation: {
@@ -583,6 +703,14 @@ export default function Admin() {
     });
   };
 
+  const toggleFinancials = (id: number) => {
+    setExpandedFinancials((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   return (
     <Layout>
       <div className="container py-12">
@@ -600,7 +728,7 @@ export default function Admin() {
         </div>
 
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
             <div className="bg-card border rounded-xl p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
                 <Calendar className="w-3.5 h-3.5" /> Total Events
@@ -624,6 +752,35 @@ export default function Admin() {
                 <Users className="w-3.5 h-3.5" /> Registrations
               </div>
               <div className="text-3xl font-bold" data-testid="text-total-registrations">{stats.totalRegistrations}</div>
+            </div>
+          </div>
+        )}
+
+        {financialsSummary && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+            <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-green-700 text-xs uppercase tracking-wide mb-1">
+                <DollarSign className="w-3.5 h-3.5" /> Total Collected
+              </div>
+              <div className="text-3xl font-bold text-green-700">{financialsSummary.totalCollected.toFixed(0)} <span className="text-sm font-normal">JOD</span></div>
+            </div>
+            <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-red-600 text-xs uppercase tracking-wide mb-1">
+                <DollarSign className="w-3.5 h-3.5" /> Total Discounts
+              </div>
+              <div className="text-3xl font-bold text-red-600">{financialsSummary.totalDiscounts.toFixed(0)} <span className="text-sm font-normal">JOD</span></div>
+            </div>
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-primary text-xs uppercase tracking-wide mb-1">
+                <DollarSign className="w-3.5 h-3.5" /> Net Revenue
+              </div>
+              <div className="text-3xl font-bold text-primary">{financialsSummary.netRevenue.toFixed(0)} <span className="text-sm font-normal">JOD</span></div>
+            </div>
+            <div className="bg-card border rounded-xl p-4">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide mb-1">
+                <Calendar className="w-3.5 h-3.5" /> Events tracked
+              </div>
+              <div className="text-3xl font-bold">{financialsSummary.eventCount}</div>
             </div>
           </div>
         )}
@@ -771,13 +928,39 @@ export default function Admin() {
                   </button>
                   {expandedRegistrations.has(event.id) && (
                     <div className="px-5 pb-5 bg-muted/10">
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Copy each participant's personal referral link to send them via email. When a friend registers through it, both get bonus points.
-                      </p>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs text-muted-foreground">
+                          Copy each participant's personal referral link to send them via email. When a friend registers through it, both get bonus points.
+                        </p>
+                        <a href={`/api/admin/events/${event.id}/export`} download className="shrink-0 ml-3">
+                          <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs">
+                            <Download className="w-3 h-3" /> Export CSV
+                          </Button>
+                        </a>
+                      </div>
                       <RegistrationsPanel
                         eventId={event.id}
                         registrationToken={event.registrationToken}
                       />
+                    </div>
+                  )}
+                </div>
+
+                {/* Expandable: Financials */}
+                <div className="border-t">
+                  <button
+                    className="w-full flex items-center gap-2 px-5 py-3 text-sm font-medium hover:bg-muted/30 transition-colors"
+                    onClick={() => toggleFinancials(event.id)}
+                  >
+                    <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span>Financials</span>
+                    {expandedFinancials.has(event.id)
+                      ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
+                      : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground ml-auto" />}
+                  </button>
+                  {expandedFinancials.has(event.id) && (
+                    <div className="px-5 pb-5 bg-muted/10">
+                      <FinancialsPanel eventId={event.id} />
                     </div>
                   )}
                 </div>

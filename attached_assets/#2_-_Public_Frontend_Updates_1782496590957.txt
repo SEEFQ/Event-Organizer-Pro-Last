@@ -1,0 +1,30 @@
+#2 - Public Frontend Updates
+What & Why
+Update the registration page with new form fields, a media banner carousel at the top, and a completed events section at the bottom. Sponsor analytics tracking changes (remove click, count form views and submits). Public-facing changes only — no admin UI.
+
+Done looks like
+Registration page shows media banner carousel/video at the very top (if banners are configured)
+Form has: Full name, Arabic name field, nationality selector (Jordanian / Other + text), phone with country code dropdown, email, medical conditions toggle (Yes → details field), emergency contact name + phone, waiver checkbox with timestamp recorded on submit
+Referral token still captured from URL
+On submit, phone is used to upsert participant (update if phone exists, create if new); waiver timestamp stored
+Viewing the registration page records a registration impression for each linked sponsor
+Submitting the form records a registration_submitted impression for each linked sponsor
+Completed events section appears below the registration form: cards with cover image, title, type, short description
+Form validation works for all new required fields
+Out of scope
+Admin UI for banners, completed events, event types (Task 3)
+Sponsor analytics dashboard (Task 3)
+Steps
+Media banner carousel — Fetch banners from GET /media-banners (active only). Display at the top of the registration page as a carousel (images auto-advance every 5s, manual prev/next, dots indicator) or show a video banner if type=video. Show nothing if no banners configured.
+
+Updated registration form — Add all new fields to the form state and UI: fullNameAr (Arabic text input, RTL, optional label), nationality radio (Jordanian / Other) with conditional text input, phone country code dropdown prefixed to the phone field (default +962 Jordan), medical conditions Yes/No toggle with conditional details textarea, emergency contact name and phone fields, waiver checkbox (must be checked to submit). All new fields except waiver are optional.
+
+Phone-based participant upsert — On submit, POST to the existing register endpoint. The API (Task 1) handles upsert by phone. No frontend change needed beyond sending the new fields.
+
+Sponsor impression tracking — Remove the trackClick mutation from sponsor link onClick handlers on the registration page. The page-view impression (on load) stays. Add a call to the register mutation's onMutate or right before submit to fire registration_submitted impressions — this is already handled server-side in Task 1 (the submit endpoint records it), so no extra frontend call needed.
+
+Completed events section — Fetch from GET /completed-events (visible only). Render below the form as a grid of cards: cover image (or placeholder), title, event type badge, short description. Section title "Past Events" or "Previous Events". Only show if array is non-empty.
+
+Relevant files
+artifacts/event-hub/src/pages/register.tsx
+lib/api-spec/openapi.yaml

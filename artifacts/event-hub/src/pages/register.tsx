@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearch } from "wouter";
 import {
   useGetEventByToken,
   useRegisterForEvent,
   getGetEventByTokenQueryKey,
+  useListMediaBanners,
+  useListCompletedEvents,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -11,10 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import {
   Calendar, MapPin, Users, Clock, Mountain, Ruler,
-  CheckCircle2, Loader2, AlertCircle, Globe, Instagram, Facebook, Star, Share2, ImageIcon,
+  CheckCircle2, Loader2, AlertCircle, Star, Share2, ImageIcon,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -34,6 +38,19 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 const SPONSOR_TYPE_ICONS: Record<string, string> = {
   cafe: "☕", restaurant: "🍽️", camping: "⛺", hotel: "🏨", gym: "💪", shop: "🛍️", other: "🏢",
 };
+
+const COUNTRY_CODES = [
+  { code: "+962", flag: "🇯🇴", label: "Jordan" },
+  { code: "+1", flag: "🇺🇸", label: "USA / Canada" },
+  { code: "+44", flag: "🇬🇧", label: "UK" },
+  { code: "+971", flag: "🇦🇪", label: "UAE" },
+  { code: "+966", flag: "🇸🇦", label: "Saudi Arabia" },
+  { code: "+20", flag: "🇪🇬", label: "Egypt" },
+  { code: "+961", flag: "🇱🇧", label: "Lebanon" },
+  { code: "+49", flag: "🇩🇪", label: "Germany" },
+  { code: "+33", flag: "🇫🇷", label: "France" },
+  { code: "+90", flag: "🇹🇷", label: "Turkey" },
+];
 
 function mapsUrl(location: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
@@ -68,6 +85,137 @@ function GuidelinesSection({ text }: { text: string }) {
   );
 }
 
+// ─── Media Banner Carousel ────────────────────────────────────────────────────
+
+function MediaBannerCarousel() {
+  const { data: banners } = useListMediaBanners({ activeOnly: true });
+  const [current, setCurrent] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const active = banners?.filter((b) => b.isActive) ?? [];
+
+  // Clamp current index if list shrinks after data refresh
+  const safeIdx = active.length > 0 ? Math.min(current, active.length - 1) : 0;
+  if (safeIdx !== current && active.length > 0) setCurrent(safeIdx);
+
+  useEffect(() => {
+    if (active.length <= 1) return;
+    timerRef.current = setInterval(() => {
+      setCurrent((c) => (c + 1) % active.length);
+    }, 5000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [active.length]);
+
+  if (!active || active.length === 0) return null;
+
+  const banner = active[safeIdx];
+  if (!banner) return null;
+
+  const prev = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setCurrent((c) => (c - 1 + active.length) % active.length);
+  };
+  const next = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setCurrent((c) => (c + 1) % active.length);
+  };
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-2xl mb-8 bg-black" style={{ aspectRatio: "16/6" }}>
+      {banner.type === "video" ? (
+        <video
+          key={banner.url}
+          src={banner.url}
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <img
+          src={banner.url}
+          alt={banner.title ?? "Event banner"}
+          className="w-full h-full object-cover transition-opacity duration-500"
+        />
+      )}
+
+      {banner.title && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
+          <p className="text-white text-sm font-medium">{banner.title}</p>
+        </div>
+      )}
+
+      {active.length > 1 && (
+        <>
+          <button
+            onClick={prev}
+            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={next}
+            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {active.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => { if (timerRef.current) clearInterval(timerRef.current); setCurrent(i); }}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${i === current ? "bg-white" : "bg-white/40"}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Past Events Section ──────────────────────────────────────────────────────
+
+function PastEventsSection() {
+  const { data: completed } = useListCompletedEvents({ visibleOnly: true });
+
+  if (!completed || completed.length === 0) return null;
+
+  return (
+    <div className="mt-12 pt-8 border-t">
+      <h2 className="text-xl font-bold mb-6">Previous Events</h2>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {completed.map((ev) => (
+          <div key={ev.id} className="border rounded-xl overflow-hidden bg-card shadow-sm">
+            {ev.coverImageUrl ? (
+              <img src={ev.coverImageUrl} alt={ev.title} className="w-full h-32 object-cover" />
+            ) : (
+              <div className="w-full h-32 bg-muted flex items-center justify-center">
+                <ImageIcon className="w-8 h-8 text-muted-foreground" />
+              </div>
+            )}
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Badge variant="secondary" className="text-xs">{ev.eventType}</Badge>
+                {ev.eventDate && (
+                  <span className="text-xs text-muted-foreground">
+                    {format(new Date(ev.eventDate), "MMM d, yyyy")}
+                  </span>
+                )}
+              </div>
+              <h3 className="font-semibold text-sm leading-snug mb-1">{ev.title}</h3>
+              <p className="text-xs text-muted-foreground line-clamp-2">{ev.shortDescription}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Registration Page ───────────────────────────────────────────────────
+
 export default function RegisterPage() {
   const { token } = useParams<{ token: string }>();
   const search = useSearch();
@@ -77,11 +225,22 @@ export default function RegisterPage() {
   const refToken = new URLSearchParams(search).get("ref") ?? undefined;
 
   const [name, setName] = useState("");
+  const [fullNameAr, setFullNameAr] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState("+962");
+  const [nationality, setNationality] = useState<"jordanian" | "other" | "">("");
+  const [nationalityOther, setNationalityOther] = useState("");
+  const [hasMedicalConditions, setHasMedicalConditions] = useState(false);
+  const [medicalDetails, setMedicalDetails] = useState("");
+  const [emergencyContactName, setEmergencyContactName] = useState("");
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState("");
+  const [waiverAccepted, setWaiverAccepted] = useState(false);
+
   const [submitted, setSubmitted] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState<"pending" | "confirmed" | "waitlist" | null>(null);
   const [earnedPoints, setEarnedPoints] = useState(0);
+
   const { data, isLoading, error } = useGetEventByToken(token!, {
     query: { enabled: !!token, queryKey: getGetEventByTokenQueryKey(token!) },
   });
@@ -107,9 +266,27 @@ export default function RegisterPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
+    if (!waiverAccepted) {
+      toast({ title: "Please accept the waiver", description: "You must accept the waiver to register.", variant: "destructive" });
+      return;
+    }
     registerMutation.mutate({
       token: token!,
-      data: { name, email, phone: phone || undefined, refToken },
+      data: {
+        name,
+        fullNameAr: fullNameAr || undefined,
+        email,
+        phone: phone || undefined,
+        phoneCountryCode,
+        nationality: nationality || undefined,
+        nationalityOther: nationalityOther || undefined,
+        hasMedicalConditions,
+        medicalDetails: hasMedicalConditions ? medicalDetails || undefined : undefined,
+        emergencyContactName: emergencyContactName || undefined,
+        emergencyContactPhone: emergencyContactPhone || undefined,
+        waiverAcceptedAt: waiverAccepted ? new Date().toISOString() : undefined,
+        refToken,
+      },
     });
   };
 
@@ -224,6 +401,10 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 py-12">
+
+        {/* Media Banner Carousel */}
+        <MediaBannerCarousel />
+
         {refToken && (
           <div className="bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 flex items-center gap-3 mb-6 text-sm">
             <Share2 className="w-4 h-4 text-primary shrink-0" />
@@ -231,6 +412,7 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {/* Event Info */}
         <div className="mb-8">
           <div className="flex flex-wrap gap-2 mb-4">
             <Badge variant="secondary">{CATEGORY_LABELS[event.category] ?? event.category}</Badge>
@@ -335,6 +517,7 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {/* Registration Form */}
         <div className="border rounded-2xl p-6 bg-card shadow-sm">
           {isClosed ? (
             <div className="text-center py-4">
@@ -353,9 +536,10 @@ export default function RegisterPage() {
                   : `Secure your spot and earn ${pts}${refToken ? "+1 bonus" : ""} loyalty point${pts !== 1 || refToken ? "s" : ""} 🎉`}
               </p>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Full Name */}
                 <div>
-                  <Label htmlFor="name">Full name</Label>
+                  <Label htmlFor="name">Full name <span className="text-destructive">*</span></Label>
                   <Input
                     id="name"
                     data-testid="input-name"
@@ -366,8 +550,25 @@ export default function RegisterPage() {
                     className="mt-1"
                   />
                 </div>
+
+                {/* Arabic Name */}
                 <div>
-                  <Label htmlFor="email">Email address</Label>
+                  <Label htmlFor="fullNameAr">
+                    الاسم الكامل <span className="text-muted-foreground text-xs">(optional)</span>
+                  </Label>
+                  <Input
+                    id="fullNameAr"
+                    value={fullNameAr}
+                    onChange={(e) => setFullNameAr(e.target.value)}
+                    placeholder="الاسم بالعربي"
+                    dir="rtl"
+                    className="mt-1 text-right"
+                  />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <Label htmlFor="email">Email address <span className="text-destructive">*</span></Label>
                   <Input
                     id="email"
                     type="email"
@@ -379,26 +580,160 @@ export default function RegisterPage() {
                     className="mt-1"
                   />
                 </div>
+
+                {/* Phone with country code */}
                 <div>
                   <Label htmlFor="phone">
-                    Phone number <span className="text-muted-foreground">(optional)</span>
+                    Phone number <span className="text-muted-foreground text-xs">(optional)</span>
                   </Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    data-testid="input-phone"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 234 567 8900"
-                    className="mt-1"
-                  />
+                  <div className="flex gap-2 mt-1">
+                    <select
+                      value={phoneCountryCode}
+                      onChange={(e) => setPhoneCountryCode(e.target.value)}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm shrink-0 w-32"
+                    >
+                      {COUNTRY_CODES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.code}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      data-testid="input-phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="7X XXX XXXX"
+                      className="flex-1"
+                    />
+                  </div>
                 </div>
+
+                {/* Nationality */}
+                <div>
+                  <Label>Nationality <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <div className="flex gap-4 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="nationality"
+                        value="jordanian"
+                        checked={nationality === "jordanian"}
+                        onChange={() => setNationality("jordanian")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">🇯🇴 Jordanian</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="nationality"
+                        value="other"
+                        checked={nationality === "other"}
+                        onChange={() => setNationality("other")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">Other</span>
+                    </label>
+                  </div>
+                  {nationality === "other" && (
+                    <Input
+                      value={nationalityOther}
+                      onChange={(e) => setNationalityOther(e.target.value)}
+                      placeholder="Please specify"
+                      className="mt-2"
+                    />
+                  )}
+                </div>
+
+                {/* Medical Conditions */}
+                <div>
+                  <Label>Medical conditions <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <div className="flex gap-4 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="medical"
+                        checked={!hasMedicalConditions}
+                        onChange={() => setHasMedicalConditions(false)}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">No</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="medical"
+                        checked={hasMedicalConditions}
+                        onChange={() => setHasMedicalConditions(true)}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">Yes</span>
+                    </label>
+                  </div>
+                  {hasMedicalConditions && (
+                    <Textarea
+                      value={medicalDetails}
+                      onChange={(e) => setMedicalDetails(e.target.value)}
+                      placeholder="Please describe your medical condition(s)…"
+                      className="mt-2 min-h-[80px]"
+                    />
+                  )}
+                </div>
+
+                {/* Emergency Contact */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="emergencyName">
+                      Emergency contact name <span className="text-muted-foreground text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      id="emergencyName"
+                      value={emergencyContactName}
+                      onChange={(e) => setEmergencyContactName(e.target.value)}
+                      placeholder="Full name"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="emergencyPhone">
+                      Emergency contact phone <span className="text-muted-foreground text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      id="emergencyPhone"
+                      type="tel"
+                      value={emergencyContactPhone}
+                      onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                      placeholder="+962 7X XXX XXXX"
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Waiver */}
+                <div className="bg-muted/30 border rounded-xl p-4">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={waiverAccepted}
+                      onChange={(e) => setWaiverAccepted(e.target.checked)}
+                      className="mt-0.5 accent-primary shrink-0"
+                    />
+                    <span className="text-sm">
+                      I acknowledge that outdoor activities involve inherent risks and I accept full responsibility for my participation.
+                      I confirm that I am physically fit to participate and will follow all safety guidelines provided by the organizers.
+                      <span className="text-destructive font-medium"> (Required)</span>
+                    </span>
+                  </label>
+                </div>
+
                 <Button
                   type="submit"
                   className="w-full"
                   size="lg"
                   data-testid="button-register"
-                  disabled={registerMutation.isPending}
+                  disabled={registerMutation.isPending || !waiverAccepted}
                 >
                   {registerMutation.isPending ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Registering...</>
@@ -409,6 +744,7 @@ export default function RegisterPage() {
           )}
         </div>
 
+        {/* Sponsors */}
         {sponsors && sponsors.length > 0 && (
           <div className="mt-12 pt-8 border-t">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-4">Supported by</p>
@@ -426,21 +762,21 @@ export default function RegisterPage() {
                         {s.website && (
                           <a href={s.website} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                            <Globe className="w-3 h-3" /> Website
+                            🌐 Website
                           </a>
                         )}
                         {s.instagram && (
                           <a href={s.instagram.startsWith("http") ? s.instagram : `https://instagram.com/${s.instagram.replace("@", "")}`}
                             target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-pink-500 transition-colors">
-                            <Instagram className="w-3 h-3" /> {s.instagram.startsWith("@") ? s.instagram : `@${s.instagram}`}
+                            📸 {s.instagram.startsWith("@") ? s.instagram : `@${s.instagram}`}
                           </a>
                         )}
                         {s.facebook && (
                           <a href={s.facebook.startsWith("http") ? s.facebook : `https://facebook.com/${s.facebook}`}
                             target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-blue-500 transition-colors">
-                            <Facebook className="w-3 h-3" /> Facebook
+                            👍 Facebook
                           </a>
                         )}
                       </div>
@@ -463,6 +799,9 @@ export default function RegisterPage() {
             </div>
           </div>
         )}
+
+        {/* Past Events Section */}
+        <PastEventsSection />
       </div>
     </div>
   );
