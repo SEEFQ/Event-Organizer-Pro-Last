@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Outdoor Event Hub"
+version = "1.0.0"
+id = "artifacts/event-hub"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20176
+
+[services.development]
+run = "pnpm --filter @workspace/event-hub run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/event-hub", "run", "build" ]
+publicDir = "artifacts/event-hub/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20176"
+BASE_PATH = "/"

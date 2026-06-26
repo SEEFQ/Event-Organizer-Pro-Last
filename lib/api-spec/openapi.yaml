@@ -1,0 +1,2190 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Outdoor Event Hub API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+  - name: events
+  - name: registrations
+  - name: comments
+  - name: stats
+  - name: public
+    description: Token-based public endpoints for participants
+  - name: photos
+    description: Event photo gallery endpoints
+  - name: storage
+    description: Object storage upload and serving endpoints
+  - name: sponsors
+    description: Sponsor management and exposure tracking
+  - name: participants
+    description: Participant loyalty points
+  - name: event-types
+    description: Event type master data
+  - name: completed-events
+    description: Admin-curated past events for registration page
+  - name: media-banners
+    description: Media banner management
+  - name: financials
+    description: Event financial tracking
+  - name: admin
+    description: Admin participant management and exports
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List all events
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: upcoming
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Event"
+    post:
+      operationId: createEvent
+      tags: [events]
+      summary: Create a new event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "201":
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+
+  /events/{id}:
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: Get an event by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEvent
+      tags: [events]
+      summary: Update an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventUpdate"
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteEvent
+      tags: [events]
+      summary: Delete an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /events/{id}/registrations:
+    get:
+      operationId: listEventRegistrations
+      tags: [registrations]
+      summary: List registrations for an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of registrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Registration"
+
+  /events/{id}/comments:
+    get:
+      operationId: listEventComments
+      tags: [comments]
+      summary: List comments for an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+    post:
+      operationId: createComment
+      tags: [comments]
+      summary: Create a comment on an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+
+  /events/{id}/sponsors:
+    get:
+      operationId: listEventSponsors
+      tags: [sponsors]
+      summary: List sponsors for an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sponsors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sponsor"
+    post:
+      operationId: addEventSponsor
+      tags: [sponsors]
+      summary: Assign a sponsor to an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventSponsorInput"
+      responses:
+        "201":
+          description: Assigned
+
+  /events/{id}/sponsors/{sponsorId}:
+    delete:
+      operationId: removeEventSponsor
+      tags: [sponsors]
+      summary: Remove a sponsor from an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sponsorId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
+  /events/{id}/export:
+    get:
+      operationId: exportEventRegistrations
+      tags: [events]
+      summary: Download event registrations as CSV
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "404":
+          description: Event not found
+
+  /events/{id}/financials:
+    get:
+      operationId: getEventFinancials
+      tags: [financials]
+      summary: Get financial summary for an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Financial summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventFinancials"
+        "404":
+          description: Event not found
+    patch:
+      operationId: updateEventFinancials
+      tags: [financials]
+      summary: Update financial data for an event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventFinancialsInput"
+      responses:
+        "200":
+          description: Updated financials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventFinancials"
+
+  /events/{id}/financials/export:
+    get:
+      operationId: exportEventFinancials
+      tags: [financials]
+      summary: Download event financials as CSV
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "404":
+          description: Event not found
+
+  /financials/summary:
+    get:
+      operationId: getFinancialsSummary
+      tags: [financials]
+      summary: Get aggregate financial summary across all events
+      responses:
+        "200":
+          description: Financials summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialsSummary"
+
+  /registrations/{id}:
+    delete:
+      operationId: cancelRegistration
+      tags: [registrations]
+      summary: Cancel a registration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Cancelled
+    patch:
+      operationId: updateRegistrationStatus
+      tags: [registrations]
+      summary: Update registration status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationStatusUpdate"
+      responses:
+        "200":
+          description: Updated registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Registration"
+        "404":
+          description: Not found
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [stats]
+      summary: List recent activity
+      responses:
+        "200":
+          description: Activity log
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /sponsors:
+    get:
+      operationId: listSponsors
+      tags: [sponsors]
+      summary: List all sponsors with stats
+      responses:
+        "200":
+          description: Sponsors with analytics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SponsorWithStats"
+    post:
+      operationId: createSponsor
+      tags: [sponsors]
+      summary: Create a sponsor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SponsorInput"
+      responses:
+        "201":
+          description: Created sponsor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sponsor"
+
+  /sponsors/{id}/report/export:
+    get:
+      operationId: exportSponsorReport
+      tags: [sponsors]
+      summary: Download sponsor impression report as CSV
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "404":
+          description: Sponsor not found
+
+  /sponsors/analytics:
+    get:
+      operationId: listSponsorsAnalytics
+      tags: [sponsors]
+      summary: Get per-event analytics breakdown for all sponsors
+      responses:
+        "200":
+          description: Sponsor analytics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SponsorAnalytics"
+
+  /sponsors/{id}:
+    get:
+      operationId: getSponsor
+      tags: [sponsors]
+      summary: Get a sponsor by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sponsor with stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SponsorWithStats"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateSponsor
+      tags: [sponsors]
+      summary: Update a sponsor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SponsorInput"
+      responses:
+        "200":
+          description: Updated sponsor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sponsor"
+    delete:
+      operationId: deleteSponsor
+      tags: [sponsors]
+      summary: Delete a sponsor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /participants:
+    get:
+      operationId: listParticipants
+      tags: [participants]
+      summary: List participants ordered by points
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Participants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Participant"
+
+  /participants/{phone}/events:
+    get:
+      operationId: getParticipantEvents
+      tags: [participants]
+      summary: Get events for a participant by phone
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Participant event history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParticipantEvent"
+
+  /participants/{phone}:
+    get:
+      operationId: getParticipant
+      tags: [participants]
+      summary: Get a participant by phone
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateParticipant
+      tags: [participants]
+      summary: Update a participant's profile fields
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateParticipantInput"
+      responses:
+        "200":
+          description: Updated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+        "404":
+          description: Not found
+
+  /participants/{phone}/phone:
+    patch:
+      operationId: changeParticipantPhone
+      tags: [participants]
+      summary: Change a participant's phone number (cascades to registrations)
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePhoneInput"
+      responses:
+        "200":
+          description: Updated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+        "404":
+          description: Not found
+        "409":
+          description: Phone already in use
+
+  /public/register/{token}:
+    get:
+      operationId: getEventByToken
+      tags: [public]
+      summary: Get event details by registration token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event with sponsors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventWithSponsors"
+        "404":
+          description: Not found
+    post:
+      operationId: registerForEvent
+      tags: [public]
+      summary: Submit a registration for an event
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationInput"
+      responses:
+        "201":
+          description: Registration created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Registration"
+        "400":
+          description: Bad request
+
+  /public/photos/{token}:
+    get:
+      operationId: getEventByPhotoToken
+      tags: [public]
+      summary: Get event details and photos by photo token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event with photos and sponsors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventWithPhotosAndSponsors"
+        "404":
+          description: Not found
+    post:
+      operationId: uploadPhotoByToken
+      tags: [public]
+      summary: Submit a photo for an event via photo token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhotoInput"
+      responses:
+        "201":
+          description: Photo submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Photo"
+        "404":
+          description: Not found
+
+  /storage/uploads/request-url:
+    post:
+      tags: [storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+
+  /storage/objects/{objectPath}:
+    get:
+      tags: [storage]
+      operationId: getStorageObject
+      summary: Serve an uploaded object
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+
+  /event-types:
+    get:
+      operationId: listEventTypes
+      tags: [event-types]
+      summary: List all event types
+      responses:
+        "200":
+          description: Event types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventType"
+    post:
+      operationId: createEventType
+      tags: [event-types]
+      summary: Create an event type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventTypeInput"
+      responses:
+        "201":
+          description: Created event type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+
+  /event-types/{id}:
+    get:
+      operationId: getEventType
+      tags: [event-types]
+      summary: Get an event type by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEventType
+      tags: [event-types]
+      summary: Update an event type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventTypeInput"
+      responses:
+        "200":
+          description: Updated event type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+    delete:
+      operationId: deleteEventType
+      tags: [event-types]
+      summary: Delete an event type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /completed-events:
+    get:
+      operationId: listCompletedEvents
+      tags: [completed-events]
+      summary: List completed events for the registration page
+      parameters:
+        - name: visibleOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Completed events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CompletedEvent"
+    post:
+      operationId: createCompletedEvent
+      tags: [completed-events]
+      summary: Create a completed event entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletedEventInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletedEvent"
+
+  /completed-events/{id}:
+    get:
+      operationId: getCompletedEvent
+      tags: [completed-events]
+      summary: Get a completed event by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Completed event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletedEvent"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCompletedEvent
+      tags: [completed-events]
+      summary: Update a completed event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletedEventInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletedEvent"
+    delete:
+      operationId: deleteCompletedEvent
+      tags: [completed-events]
+      summary: Delete a completed event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /media-banners:
+    get:
+      operationId: listMediaBanners
+      tags: [media-banners]
+      summary: List media banners
+      parameters:
+        - name: activeOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Media banners
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MediaBanner"
+    post:
+      operationId: createMediaBanner
+      tags: [media-banners]
+      summary: Create a media banner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaBannerInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaBanner"
+
+  /media-banners/reorder:
+    patch:
+      operationId: reorderMediaBanners
+      tags: [media-banners]
+      summary: Reorder media banners
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/BannerReorderItem"
+      responses:
+        "204":
+          description: Reordered
+
+  /media-banners/{id}:
+    get:
+      operationId: getMediaBanner
+      tags: [media-banners]
+      summary: Get a single media banner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Banner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaBanner"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateMediaBanner
+      tags: [media-banners]
+      summary: Update a media banner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaBannerInput"
+      responses:
+        "200":
+          description: Updated banner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaBanner"
+    delete:
+      operationId: deleteMediaBanner
+      tags: [media-banners]
+      summary: Delete a media banner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/participants/search:
+    get:
+      operationId: adminSearchParticipants
+      tags: [admin]
+      summary: Quick participant search by name, phone, or email
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching participants (max 20)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Participant"
+
+  /admin/participants:
+    get:
+      operationId: adminListParticipants
+      tags: [admin]
+      summary: Admin paginated participant list with search
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Participant list with pagination
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminParticipantListResponse"
+    post:
+      operationId: adminCreateParticipant
+      tags: [admin]
+      summary: Admin create a participant manually
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminParticipantInput"
+      responses:
+        "201":
+          description: Created participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+
+  /admin/participants/export:
+    get:
+      operationId: adminExportParticipants
+      tags: [admin]
+      summary: Export all participants as CSV
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /admin/participants/{phone}:
+    get:
+      operationId: adminGetParticipant
+      tags: [admin]
+      summary: Get participant details with registration history
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Participant with registrations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminParticipantDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: adminUpdateParticipant
+      tags: [admin]
+      summary: Update participant info
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminParticipantInput"
+      responses:
+        "200":
+          description: Updated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+
+  /admin/participants/{phone}/phone:
+    patch:
+      operationId: adminChangeParticipantPhone
+      tags: [admin]
+      summary: Change a participant's phone number
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePhoneInput"
+      responses:
+        "200":
+          description: Updated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+        "409":
+          description: Phone already in use
+
+  /admin/participants/{phone}/registrations:
+    post:
+      operationId: adminAddParticipantToEvent
+      tags: [admin]
+      summary: Admin add a participant to an event
+      parameters:
+        - name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRegistrationInput"
+      responses:
+        "201":
+          description: Registration created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Registration"
+
+  /admin/events/{id}/export:
+    get:
+      operationId: adminExportEventRegistrations
+      tags: [admin]
+      summary: Export event registrations as CSV
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /admin/sponsors/{id}/export:
+    get:
+      operationId: adminExportSponsorReport
+      tags: [admin]
+      summary: Export sponsor analytics report as CSV
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    Event:
+      type: object
+      required: [id, title, category, date, location, capacity, registrationCount, status, createdAt, registrationToken, photoToken, pointsValue]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+          enum: [cycling, hiking, summer-night, walking]
+        eventTypeId:
+          type: ["integer", "null"]
+        date:
+          type: string
+          format: date-time
+        location:
+          type: string
+        capacity:
+          type: integer
+        registrationCount:
+          type: integer
+        status:
+          type: string
+          enum: [upcoming, ongoing, completed, cancelled]
+        difficulty:
+          type: ["string", "null"]
+          enum: [easy, moderate, challenging, null]
+        distance:
+          type: ["string", "null"]
+        imageUrl:
+          type: ["string", "null"]
+        meetingPoint:
+          type: ["string", "null"]
+        guidelines:
+          type: ["string", "null"]
+        pointsValue:
+          type: integer
+        registrationToken:
+          type: string
+        photoToken:
+          type: string
+        photoUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    EventInput:
+      type: object
+      required: [title, category, date, location, capacity]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        category:
+          type: string
+          enum: [cycling, hiking, summer-night, walking]
+        eventTypeId:
+          type: integer
+        date:
+          type: string
+          format: date-time
+        location:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+        difficulty:
+          type: string
+          enum: [easy, moderate, challenging]
+        distance:
+          type: string
+        imageUrl:
+          type: string
+        meetingPoint:
+          type: string
+        guidelines:
+          type: string
+        pointsValue:
+          type: integer
+          minimum: 1
+        photoUrl:
+          type: string
+
+    EventUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [cycling, hiking, summer-night, walking]
+        eventTypeId:
+          type: integer
+        date:
+          type: string
+          format: date-time
+        location:
+          type: string
+        capacity:
+          type: integer
+        difficulty:
+          type: string
+          enum: [easy, moderate, challenging]
+        distance:
+          type: string
+        imageUrl:
+          type: string
+        meetingPoint:
+          type: string
+        guidelines:
+          type: string
+        pointsValue:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [upcoming, ongoing, completed, cancelled]
+        photoUrl:
+          type: string
+
+    RegistrationStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, confirmed, waitlist, cancelled]
+
+    Registration:
+      type: object
+      required: [id, eventId, name, email, status, registeredAt, referralCount]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        name:
+          type: string
+        fullNameAr:
+          type: ["string", "null"]
+        email:
+          type: string
+        phone:
+          type: ["string", "null"]
+        phoneCountryCode:
+          type: string
+        nationality:
+          type: ["string", "null"]
+        nationalityOther:
+          type: ["string", "null"]
+        hasMedicalConditions:
+          type: boolean
+        medicalDetails:
+          type: ["string", "null"]
+        emergencyContactName:
+          type: ["string", "null"]
+        emergencyContactPhone:
+          type: ["string", "null"]
+        waiverAcceptedAt:
+          type: ["string", "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [pending, confirmed, waitlist, cancelled]
+        referralToken:
+          type: ["string", "null"]
+        referredByRegistrationId:
+          type: ["integer", "null"]
+        referralCount:
+          type: integer
+        registeredAt:
+          type: string
+          format: date-time
+
+    RegistrationInput:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        fullNameAr:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        phoneCountryCode:
+          type: string
+        nationality:
+          type: string
+        nationalityOther:
+          type: string
+        hasMedicalConditions:
+          type: boolean
+        medicalDetails:
+          type: string
+        emergencyContactName:
+          type: string
+        emergencyContactPhone:
+          type: string
+        waiverAcceptedAt:
+          type: string
+          format: date-time
+        refToken:
+          type: string
+
+    Comment:
+      type: object
+      required: [id, eventId, authorName, content, createdAt]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        authorName:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CommentInput:
+      type: object
+      required: [authorName, content]
+      properties:
+        authorName:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          minLength: 1
+
+    Photo:
+      type: object
+      required: [id, eventId, uploaderName, objectPath, uploadedAt]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        uploaderName:
+          type: string
+        caption:
+          type: ["string", "null"]
+        objectPath:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+
+    PhotoInput:
+      type: object
+      required: [uploaderName, objectPath]
+      properties:
+        uploaderName:
+          type: string
+          minLength: 1
+        caption:
+          type: string
+        objectPath:
+          type: string
+          minLength: 1
+
+    EventWithPhotos:
+      type: object
+      required: [event, photos]
+      properties:
+        event:
+          $ref: "#/components/schemas/Event"
+        photos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Photo"
+
+    EventWithSponsors:
+      type: object
+      required: [event, sponsors]
+      properties:
+        event:
+          $ref: "#/components/schemas/Event"
+        sponsors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Sponsor"
+
+    EventWithPhotosAndSponsors:
+      type: object
+      required: [event, photos, sponsors]
+      properties:
+        event:
+          $ref: "#/components/schemas/Event"
+        photos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Photo"
+        sponsors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Sponsor"
+
+    Sponsor:
+      type: object
+      required: [id, name, type, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [cafe, restaurant, camping, hotel, gym, shop, other]
+        website:
+          type: ["string", "null"]
+        instagram:
+          type: ["string", "null"]
+        facebook:
+          type: ["string", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        discountCode:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    SponsorInput:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [cafe, restaurant, camping, hotel, gym, shop, other]
+        website:
+          type: string
+        instagram:
+          type: string
+        facebook:
+          type: string
+        logoUrl:
+          type: string
+        description:
+          type: string
+        discountCode:
+          type: string
+
+    SponsorWithStats:
+      type: object
+      required: [id, name, type, createdAt, pageViews, registrationsFromPage, approvedRegistrations, conversionRate, eventsCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [cafe, restaurant, camping, hotel, gym, shop, other]
+        website:
+          type: ["string", "null"]
+        instagram:
+          type: ["string", "null"]
+        facebook:
+          type: ["string", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        discountCode:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        pageViews:
+          type: integer
+        registrationsFromPage:
+          type: integer
+        approvedRegistrations:
+          type: integer
+        conversionRate:
+          type: number
+        photoImpressions:
+          type: integer
+        eventsCount:
+          type: integer
+
+    SponsorAnalytics:
+      type: object
+      required: [sponsorId, sponsorName, sponsorType, pageViews, registrationsFromPage, approvedRegistrations, conversionRate, byEvent]
+      properties:
+        sponsorId:
+          type: integer
+        sponsorName:
+          type: string
+        sponsorType:
+          type: string
+        pageViews:
+          type: integer
+        registrationsFromPage:
+          type: integer
+        approvedRegistrations:
+          type: integer
+        conversionRate:
+          type: number
+        byEvent:
+          type: array
+          items:
+            $ref: "#/components/schemas/SponsorEventBreakdown"
+
+    SponsorEventBreakdown:
+      type: object
+      required: [eventId, eventTitle, pageViews, registrationsFromPage, approvedRegistrations, conversionRate]
+      properties:
+        eventId:
+          type: integer
+        eventTitle:
+          type: ["string", "null"]
+        pageViews:
+          type: integer
+        registrationsFromPage:
+          type: integer
+        approvedRegistrations:
+          type: integer
+        conversionRate:
+          type: number
+
+    EventSponsorInput:
+      type: object
+      required: [sponsorId]
+      properties:
+        sponsorId:
+          type: integer
+
+    ParticipantEvent:
+      type: object
+      required: [id, title, category, date, location, status, registrationStatus, registeredAt, pointsValue]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        category:
+          type: string
+          enum: [cycling, hiking, summer-night, walking]
+        date:
+          type: string
+          format: date-time
+        location:
+          type: string
+        status:
+          type: string
+          enum: [upcoming, ongoing, completed, cancelled]
+        registrationStatus:
+          type: string
+          enum: [pending, confirmed, waitlist, cancelled]
+        registeredAt:
+          type: string
+          format: date-time
+        pointsValue:
+          type: integer
+        referralToken:
+          type: ["string", "null"]
+        registrationToken:
+          type: string
+
+    Participant:
+      type: object
+      required: [id, email, name, totalPoints, totalEvents, referralCount, joinedAt]
+      properties:
+        id:
+          type: integer
+        phone:
+          type: ["string", "null"]
+        email:
+          type: string
+        name:
+          type: string
+        totalPoints:
+          type: integer
+        totalEvents:
+          type: integer
+        referralCount:
+          type: integer
+        emergencyContactName:
+          type: ["string", "null"]
+        emergencyContactPhone:
+          type: ["string", "null"]
+        waiverAcceptedAt:
+          type: ["string", "null"]
+          format: date-time
+        joinedAt:
+          type: string
+          format: date-time
+
+    AdminParticipantInput:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        emergencyContactName:
+          type: string
+        emergencyContactPhone:
+          type: string
+        totalPoints:
+          type: integer
+
+    AdminRegistrationInput:
+      type: object
+      required: [eventId]
+      properties:
+        eventId:
+          type: integer
+        status:
+          type: string
+          enum: [pending, confirmed, waitlist, cancelled]
+
+    AdminParticipantListResponse:
+      type: object
+      required: [participants, total, page, limit]
+      properties:
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Participant"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    AdminParticipantDetail:
+      type: object
+      required: [participant, registrations]
+      properties:
+        participant:
+          $ref: "#/components/schemas/Participant"
+        registrations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRegistrationSummary"
+
+    AdminRegistrationSummary:
+      type: object
+      required: [id, eventId, eventTitle, eventDate, status, registeredAt]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        eventTitle:
+          type: string
+        eventDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, confirmed, waitlist, cancelled]
+        registeredAt:
+          type: string
+          format: date-time
+
+    Stats:
+      type: object
+      required: [totalEvents, upcomingEvents, totalRegistrations, totalParticipants, categoryCounts]
+      properties:
+        totalEvents:
+          type: integer
+        upcomingEvents:
+          type: integer
+        totalRegistrations:
+          type: integer
+        totalParticipants:
+          type: integer
+        categoryCounts:
+          type: object
+          properties:
+            cycling:
+              type: integer
+            hiking:
+              type: integer
+            summer-night:
+              type: integer
+            walking:
+              type: integer
+
+    ActivityItem:
+      type: object
+      required: [id, type, description, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [registration, comment, event_created]
+        description:
+          type: string
+        eventTitle:
+          type: ["string", "null"]
+        eventId:
+          type: ["integer", "null"]
+        actorType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    EventType:
+      type: object
+      required: [id, name, isArchived, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        icon:
+          type: ["string", "null"]
+        isArchived:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    EventTypeInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        icon:
+          type: string
+        isArchived:
+          type: boolean
+
+    CompletedEvent:
+      type: object
+      required: [id, title, eventType, shortDescription, displayOrder, isVisible, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        eventType:
+          type: string
+        shortDescription:
+          type: string
+        coverImageUrl:
+          type: ["string", "null"]
+        eventDate:
+          type: ["string", "null"]
+          format: date
+        displayOrder:
+          type: integer
+        isVisible:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    CompletedEventInput:
+      type: object
+      required: [title, eventType, shortDescription]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        eventType:
+          type: string
+          minLength: 1
+        shortDescription:
+          type: string
+          minLength: 1
+        coverImageUrl:
+          type: string
+        eventDate:
+          type: string
+        displayOrder:
+          type: integer
+        isVisible:
+          type: boolean
+
+    MediaBanner:
+      type: object
+      required: [id, type, url, displayOrder, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [image, video]
+        url:
+          type: string
+        thumbnailUrl:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        displayOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    MediaBannerInput:
+      type: object
+      required: [url]
+      properties:
+        type:
+          type: string
+          enum: [image, video]
+        url:
+          type: string
+          minLength: 1
+        thumbnailUrl:
+          type: string
+        title:
+          type: string
+        displayOrder:
+          type: integer
+        isActive:
+          type: boolean
+
+    BannerReorderItem:
+      type: object
+      required: [id, displayOrder]
+      properties:
+        id:
+          type: integer
+        displayOrder:
+          type: integer
+
+    EventFinancials:
+      type: object
+      required: [id, eventId, pricePerPerson, totalCollected, referralDiscounts, manualDiscounts, promoDiscounts, netRevenue, updatedAt]
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        pricePerPerson:
+          type: integer
+        totalCollected:
+          type: integer
+        referralDiscounts:
+          type: integer
+        manualDiscounts:
+          type: integer
+        promoDiscounts:
+          type: integer
+        netRevenue:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        updatedAt:
+          type: string
+          format: date-time
+
+    EventFinancialsInput:
+      type: object
+      properties:
+        pricePerPerson:
+          type: integer
+        totalCollected:
+          type: integer
+        referralDiscounts:
+          type: integer
+        manualDiscounts:
+          type: integer
+        promoDiscounts:
+          type: integer
+        notes:
+          type: string
+
+    FinancialsSummary:
+      type: object
+      required: [totalCollected, totalDiscounts, netRevenue, eventCount]
+      properties:
+        totalCollected:
+          type: integer
+        totalDiscounts:
+          type: integer
+        netRevenue:
+          type: integer
+        eventCount:
+          type: integer
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+
+    UpdateParticipantInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        emergencyContactName:
+          type: string
+        emergencyContactPhone:
+          type: string
+        totalPoints:
+          type: integer
+
+    ChangePhoneInput:
+      type: object
+      required: [newPhone]
+      properties:
+        newPhone:
+          type: string
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

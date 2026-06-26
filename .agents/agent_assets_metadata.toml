@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "8vmutjaY3RHqzUL-cdnGD"
+uri = "file://AI_PROMPT.md"
+type = "text"
+title = "AI_PROMPT.md — Ready-to-send project description"

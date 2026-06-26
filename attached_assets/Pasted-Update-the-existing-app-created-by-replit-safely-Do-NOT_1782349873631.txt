@@ -1,0 +1,77 @@
+Update the existing app created by replit safely.
+
+Do NOT rebuild or refactor unrelated parts. Keep Docker deployment working, keep existing data, create DB migrations, and include all changes in Docker.
+
+Changes needed:
+
+Sponsor analytics
+Remove click counting.
+
+Track: page views where sponsor appears, registrations from that page, approved registrations, and conversion rate.
+
+Per sponsor and per event.
+make sure it count one for each click of the regstartion form and when submiting regstration
+
+Completed events section
+Show previous completed events on the registration page.
+
+Each item: title, type, short description, cover image.
+
+Admin can add/edit/delete.
+
+Top media banner
+Add image carousel or video banner at the top of the registration page.
+
+Admin can upload, preview, reorder, replace, and delete media.
+
+Event type management
+Admin can create/edit/archive event types.
+
+Events should use this master list.
+
+Registration form updates
+Full name (Arabic field).
+
+Nationality: Jordanian / Other (+ text field).
+
+Phone with country code selector.
+
+Medical conditions: Yes/No (+ details field).
+
+Financial tracking
+Per event: total collected, referral discounts, manual discounts, promo discounts.
+
+Auto-calculate net revenue.
+
+Show dashboard summary.
+
+Participant identity
+Phone number is the unique participant ID.
+
+Users may have multiple emails.
+
+Returning users keep points/history.
+
+Admin can change phone number without losing history.
+
+Admin participant management
+Search existing participants by phone or name.
+
+Add them directly to events and approve them.
+
+Create new participants manually.
+
+Public registration should update existing participant if phone exists; otherwise create a new one.
+
+Add these features if they do not already exist:
+Participant profile: points, events attended, referrals, discounts.
+
+Emergency contact name and phone.
+
+Waiver acceptance with timestamp.
+
+Sponsor reporting dashboard.
+
+Audit log for admin changes.
+
+Export to Excel for participants, finances, and sponsor reports.

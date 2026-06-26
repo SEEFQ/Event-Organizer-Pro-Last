@@ -1,0 +1,3 @@
+- [Drizzle correlated subquery bug](drizzle-correlated-subquery.md) — ${table.column} in sql`` subqueries becomes a fixed parameter, not a per-row ref; use raw SQL alias instead.
+- [Drizzle push TTY workaround](drizzle-push-tty.md) — drizzle-kit push fails in non-TTY CI; use raw SQL script via @workspace/db pool instead.
+- [Orval split-mode inline schema collision](orval-inline-schema-collision.md) — inline requestBody schemas in OpenAPI cause duplicate exports in Zod+types split mode; always use $ref to named schemas.
