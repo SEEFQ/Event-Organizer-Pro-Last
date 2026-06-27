@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, sum, sql } from "drizzle-orm";
-import { db, eventFinancialsTable, eventsTable, registrationsTable } from "@workspace/db";
+import { db, eventFinancialsTable, eventsTable, registrationsTable, type DiscountEntry } from "@workspace/db";
+import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
@@ -39,18 +40,33 @@ router.patch("/events/:id/financials", async (req, res): Promise<void> => {
   const eventId = parseInt(req.params.id);
   if (isNaN(eventId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { pricePerPerson, totalCollected, referralDiscounts, manualDiscounts, promoDiscounts, notes } = req.body as {
+  const { pricePerPerson, totalCollected, referralDiscounts, manualDiscounts, promoDiscounts, discountEntries, notes } = req.body as {
     pricePerPerson?: number; totalCollected?: number; referralDiscounts?: number;
-    manualDiscounts?: number; promoDiscounts?: number; notes?: string;
+    manualDiscounts?: number; promoDiscounts?: number;
+    discountEntries?: DiscountEntry[];
+    notes?: string;
   };
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (pricePerPerson !== undefined) updates.pricePerPerson = pricePerPerson;
   if (totalCollected !== undefined) updates.totalCollected = totalCollected;
   if (referralDiscounts !== undefined) updates.referralDiscounts = referralDiscounts;
-  if (manualDiscounts !== undefined) updates.manualDiscounts = manualDiscounts;
   if (promoDiscounts !== undefined) updates.promoDiscounts = promoDiscounts;
   if (notes !== undefined) updates.notes = notes;
+
+  // When discount entries are provided, auto-compute the manualDiscounts total
+  if (discountEntries !== undefined) {
+    const entries: DiscountEntry[] = discountEntries.map((e) => ({
+      id: e.id ?? randomUUID(),
+      amount: Number(e.amount) || 0,
+      reason: e.reason ?? "",
+      createdAt: e.createdAt ?? new Date().toISOString(),
+    }));
+    updates.discountEntries = entries;
+    updates.manualDiscounts = entries.reduce((s, e) => s + e.amount, 0);
+  } else if (manualDiscounts !== undefined) {
+    updates.manualDiscounts = manualDiscounts;
+  }
 
   let [financials] = await db
     .update(eventFinancialsTable)

@@ -146,6 +146,53 @@ router.post("/admin/participants", async (req, res): Promise<void> => {
   res.status(201).json(participant);
 });
 
+// Bulk import — must appear before /:phone routes to avoid param matching
+router.post("/admin/participants/import", async (req, res): Promise<void> => {
+  const rows = req.body as Array<{ name?: string; email?: string; phone?: string }>;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "Body must be a non-empty array" }); return;
+  }
+
+  const results = { created: 0, updated: 0, failed: 0, errors: [] as string[] };
+
+  for (const row of rows) {
+    if (!row.name?.trim() || !row.email?.trim()) {
+      results.failed++;
+      results.errors.push(`Skipped row: name and email are required`);
+      continue;
+    }
+    try {
+      const phone = row.phone?.trim() || null;
+      const email = row.email.trim().toLowerCase();
+      const name = row.name.trim();
+
+      if (phone) {
+        const [byPhone] = await db.select().from(participantsTable).where(eq(participantsTable.phone, phone));
+        if (byPhone) {
+          await db.update(participantsTable).set({ name, email }).where(eq(participantsTable.id, byPhone.id));
+          results.updated++;
+          continue;
+        }
+      }
+
+      const [byEmail] = await db.select().from(participantsTable).where(ilike(participantsTable.email, email));
+      if (byEmail) {
+        await db.update(participantsTable).set({ name, ...(phone ? { phone } : {}) }).where(eq(participantsTable.id, byEmail.id));
+        results.updated++;
+        continue;
+      }
+
+      await db.insert(participantsTable).values({ name, email, phone, totalPoints: 0, totalEvents: 0, referralCount: 0 });
+      results.created++;
+    } catch (e) {
+      results.failed++;
+      results.errors.push(`${row.email}: ${(e as Error).message}`);
+    }
+  }
+
+  res.json(results);
+});
+
 router.get("/admin/participants/:phone", async (req, res): Promise<void> => {
   const phone = decodeURIComponent(req.params.phone);
 

@@ -238,12 +238,23 @@ export default function RegisterPage() {
   const [waiverAccepted, setWaiverAccepted] = useState(false);
 
   const [submitted, setSubmitted] = useState(false);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState<"pending" | "confirmed" | "waitlist" | null>(null);
   const [earnedPoints, setEarnedPoints] = useState(0);
 
   const { data, isLoading, error } = useGetEventByToken(token!, {
     query: { enabled: !!token, queryKey: getGetEventByTokenQueryKey(token!) },
   });
+
+  // Track page view once per session (fires after event data loads)
+  useEffect(() => {
+    if (!token || !data?.event) return;
+    const key = `view_tracked_${token}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    fetch(`${base}/api/public/register/${encodeURIComponent(token)}/track-view`, { method: "POST" }).catch(() => {});
+  }, [token, data?.event?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const registerMutation = useRegisterForEvent({
     mutation: {
@@ -258,6 +269,10 @@ export default function RegisterPage() {
         const message =
           (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
           "Registration failed. Please try again.";
+        if (message.toLowerCase().includes("already registered")) {
+          setAlreadyRegistered(true);
+          return;
+        }
         toast({ title: "Registration failed", description: message, variant: "destructive" });
       },
     },
@@ -391,6 +406,32 @@ export default function RegisterPage() {
               >
                 {event.meetingPoint ?? event.location}
               </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (alreadyRegistered) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center">
+          <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-10 h-10 text-green-500" />
+          </div>
+          <h1 className="text-3xl font-bold mb-3">Already Registered!</h1>
+          <p className="text-muted-foreground mb-6">
+            You're already signed up for <strong>{event.title}</strong>. Check your email for confirmation details, or contact the organiser if you have questions.
+          </p>
+          <div className="bg-muted/50 rounded-xl p-4 text-left space-y-3 text-sm">
+            <div className="flex gap-2 items-center text-muted-foreground">
+              <Calendar className="w-4 h-4 shrink-0" />
+              {format(new Date(event.date), "EEEE, MMMM d, yyyy 'at' h:mm a")}
+            </div>
+            <div className="flex gap-2 items-start text-muted-foreground">
+              <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
+              {event.meetingPoint ?? event.location}
             </div>
           </div>
         </div>

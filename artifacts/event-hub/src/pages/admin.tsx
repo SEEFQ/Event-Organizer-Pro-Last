@@ -18,6 +18,9 @@ import {
   getGetFinancialsSummaryQueryKey,
   EventInputCategory,
   EventInputDifficulty,
+  useAdminSearchParticipants,
+  useAdminAddParticipantToEvent,
+  useListEventTypes,
 } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -117,11 +120,13 @@ interface EditEventDialogProps {
 function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: eventTypes } = useListEventTypes();
 
   const [form, setForm] = useState({
     title: event.title,
     description: event.description ?? "",
     category: event.category,
+    eventTypeId: String((event as { eventTypeId?: number | null }).eventTypeId ?? ""),
     date: event.date ? format(new Date(event.date), "yyyy-MM-dd'T'HH:mm") : "",
     location: event.location,
     capacity: String(event.capacity),
@@ -155,6 +160,7 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
         title: form.title,
         description: form.description || undefined,
         category: form.category as typeof EventInputCategory[keyof typeof EventInputCategory],
+        eventTypeId: form.eventTypeId ? parseInt(form.eventTypeId) : undefined,
         date: new Date(form.date).toISOString(),
         location: form.location,
         capacity: parseInt(form.capacity),
@@ -194,6 +200,20 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
                 </SelectContent>
               </Select>
             </div>
+            {eventTypes && eventTypes.length > 0 && (
+              <div>
+                <Label>Event Type <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+                <Select value={form.eventTypeId || "__none__"} onValueChange={(v) => set("eventTypeId", v === "__none__" ? "" : v)}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="— Not set —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Not set —</SelectItem>
+                    {eventTypes.map((et) => (
+                      <SelectItem key={et.id} value={String(et.id)}>{et.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => set("status", v)}>
@@ -372,6 +392,31 @@ function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; r
   const { toast } = useToast();
   const { data: registrations, isLoading } = useListEventRegistrations(eventId);
 
+  // Search + add existing participant
+  const [addSearch, setAddSearch] = useState("");
+  const [showAddPanel, setShowAddPanel] = useState(false);
+
+  const { data: participantSearchResults } = useAdminSearchParticipants(
+    { q: addSearch },
+    { query: { enabled: showAddPanel && addSearch.trim().length >= 2 } }
+  );
+
+  const addParticipantMutation = useAdminAddParticipantToEvent({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Participant added to event" });
+        setAddSearch("");
+        setShowAddPanel(false);
+        queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/registrations`] });
+        queryClient.invalidateQueries({ queryKey: getListEventsQueryKey() });
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed to add participant";
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      },
+    },
+  });
+
   const statusMutation = useUpdateRegistrationStatus({
     mutation: {
       onSuccess: () => {
@@ -395,13 +440,86 @@ function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; r
   const waitlisted = registrations?.filter((r) => r.status === "waitlist")   ?? [];
   const cancelled  = registrations?.filter((r) => r.status === "cancelled")  ?? [];
 
+  // ── Add-participant inline panel ──
+  const addPanel = (
+    <div className="mb-2">
+      {!showAddPanel ? (
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowAddPanel(true)}>
+          <Plus className="w-3 h-3" /> Add Existing Participant
+        </Button>
+      ) : (
+        <div className="bg-muted/30 rounded-lg p-3 space-y-2 border">
+          <div className="flex items-center gap-2">
+            <Input
+              autoFocus
+              value={addSearch}
+              onChange={(e) => setAddSearch(e.target.value)}
+              placeholder="Search by name, email, or phone…"
+              className="h-8 text-sm flex-1"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+              onClick={() => { setShowAddPanel(false); setAddSearch(""); }}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          {addSearch.trim().length >= 2 && (
+            participantSearchResults && participantSearchResults.length > 0 ? (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {participantSearchResults.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 bg-background rounded-md px-2 py-1.5 border">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{p.phone ?? p.email}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="h-6 text-xs px-2 shrink-0"
+                      disabled={addParticipantMutation.isPending}
+                      onClick={() => {
+                        if (!p.phone) {
+                          toast({ title: "No phone number", description: "This participant needs a phone number to be added.", variant: "destructive" });
+                          return;
+                        }
+                        addParticipantMutation.mutate({
+                          phone: encodeURIComponent(p.phone),
+                          data: { eventId, status: "confirmed" },
+                        });
+                      }}
+                    >
+                      {addParticipantMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No participants found.</p>
+            )
+          )}
+          {addSearch.trim().length < 2 && (
+            <p className="text-xs text-muted-foreground">Type at least 2 characters to search.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   if (isLoading) return <div className="text-xs text-muted-foreground">Loading…</div>;
   if (!registrations || registrations.length === 0) {
-    return <p className="text-xs text-muted-foreground italic">No registrations yet.</p>;
+    return (
+      <div className="space-y-3">
+        {addPanel}
+        <p className="text-xs text-muted-foreground italic">No registrations yet.</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-4">
+      {addPanel}
       {pending.length > 0 && (
         <div>
           <div className="text-xs font-medium text-amber-600 uppercase tracking-wide mb-2">
@@ -540,12 +658,17 @@ function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; r
 
 // ─── Financials Panel ─────────────────────────────────────────────────────────
 
+interface DiscountEntry { id: string; amount: string; reason: string }
+
 function FinancialsPanel({ eventId }: { eventId: number }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: fin, isLoading } = useGetEventFinancials(eventId);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ pricePerPerson: "", totalCollected: "", referralDiscounts: "", manualDiscounts: "", promoDiscounts: "", notes: "" });
+  const [form, setForm] = useState({ pricePerPerson: "", totalCollected: "", referralDiscounts: "", promoDiscounts: "", notes: "" });
+  const [discountEntries, setDiscountEntries] = useState<DiscountEntry[]>([]);
+  const [newEntryAmount, setNewEntryAmount] = useState("");
+  const [newEntryReason, setNewEntryReason] = useState("");
 
   const updateMutation = useUpdateEventFinancials({
     mutation: {
@@ -566,12 +689,37 @@ function FinancialsPanel({ eventId }: { eventId: number }) {
       pricePerPerson: String(fin?.pricePerPerson ?? 0),
       totalCollected: String(fin?.totalCollected ?? 0),
       referralDiscounts: String(fin?.referralDiscounts ?? 0),
-      manualDiscounts: String(fin?.manualDiscounts ?? 0),
       promoDiscounts: String(fin?.promoDiscounts ?? 0),
       notes: fin?.notes ?? "",
     });
+    // Load existing discount entries from JSONB or create a single entry from manualDiscounts
+    const existing = (fin as unknown as { discountEntries?: Array<{ amount: number; reason: string }> })?.discountEntries;
+    if (existing && existing.length > 0) {
+      setDiscountEntries(existing.map((e, i) => ({ id: String(i), amount: String(e.amount), reason: e.reason })));
+    } else if (fin?.manualDiscounts && fin.manualDiscounts > 0) {
+      setDiscountEntries([{ id: "0", amount: String(fin.manualDiscounts), reason: "Manual discount" }]);
+    } else {
+      setDiscountEntries([]);
+    }
+    setNewEntryAmount("");
+    setNewEntryReason("");
     setEditing(true);
   };
+
+  const addEntry = () => {
+    const amt = parseFloat(newEntryAmount);
+    if (!amt || amt <= 0) return;
+    setDiscountEntries((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), amount: newEntryAmount, reason: newEntryReason || "Discount" },
+    ]);
+    setNewEntryAmount("");
+    setNewEntryReason("");
+  };
+
+  const removeEntry = (id: string) => setDiscountEntries((prev) => prev.filter((e) => e.id !== id));
+
+  const totalManual = discountEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
 
   const handleSave = () => {
     updateMutation.mutate({
@@ -580,9 +728,11 @@ function FinancialsPanel({ eventId }: { eventId: number }) {
         pricePerPerson: parseFloat(form.pricePerPerson) || 0,
         totalCollected: parseFloat(form.totalCollected) || 0,
         referralDiscounts: parseFloat(form.referralDiscounts) || 0,
-        manualDiscounts: parseFloat(form.manualDiscounts) || 0,
+        manualDiscounts: totalManual,
         promoDiscounts: parseFloat(form.promoDiscounts) || 0,
         notes: form.notes || undefined,
+        // @ts-ignore — server accepts discountEntries but generated types may lag
+        discountEntries: discountEntries.map((e) => ({ amount: parseFloat(e.amount) || 0, reason: e.reason })),
       },
     });
   };
@@ -597,7 +747,6 @@ function FinancialsPanel({ eventId }: { eventId: number }) {
             ["pricePerPerson", "Price / person (JOD)"],
             ["totalCollected", "Total collected"],
             ["referralDiscounts", "Referral discounts"],
-            ["manualDiscounts", "Manual discounts"],
             ["promoDiscounts", "Promo discounts"],
           ].map(([k, label]) => (
             <div key={k}>
@@ -606,6 +755,50 @@ function FinancialsPanel({ eventId }: { eventId: number }) {
             </div>
           ))}
         </div>
+
+        {/* Discount entries */}
+        <div>
+          <Label className="text-xs">Manual Discounts (individual entries)</Label>
+          <div className="mt-1 space-y-1">
+            {discountEntries.map((e) => (
+              <div key={e.id} className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-md px-2 py-1">
+                <span className="text-sm font-medium text-red-700 shrink-0">{parseFloat(e.amount).toFixed(2)} JOD</span>
+                <span className="text-xs text-muted-foreground flex-1 truncate">{e.reason}</span>
+                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => removeEntry(e.id)}>
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ))}
+            {discountEntries.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">No entries — add one below.</p>
+            )}
+          </div>
+          <div className="flex gap-2 mt-2">
+            <Input
+              className="h-8 text-sm w-24 shrink-0"
+              type="number"
+              min={0}
+              step={0.01}
+              placeholder="Amount"
+              value={newEntryAmount}
+              onChange={(e) => setNewEntryAmount(e.target.value)}
+            />
+            <Input
+              className="h-8 text-sm flex-1"
+              placeholder="Reason (e.g. Member discount)"
+              value={newEntryReason}
+              onChange={(e) => setNewEntryReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEntry(); } }}
+            />
+            <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={addEntry} disabled={!newEntryAmount || parseFloat(newEntryAmount) <= 0}>
+              <Plus className="w-3 h-3" />
+            </Button>
+          </div>
+          {discountEntries.length > 0 && (
+            <p className="text-xs text-red-600 mt-1">Total manual discounts: {totalManual.toFixed(2)} JOD</p>
+          )}
+        </div>
+
         <div>
           <Label className="text-xs">Notes</Label>
           <Textarea className="mt-0.5 text-sm min-h-[60px]" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Optional notes…" />

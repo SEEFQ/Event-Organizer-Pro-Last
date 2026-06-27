@@ -124,9 +124,17 @@ router.get("/public/register/:token", async (req, res): Promise<void> => {
   if (!event) { res.status(404).json({ error: "Event not found" }); return; }
 
   const sponsors = await getSponsorsForEvent(event.id);
-  trackImpressions(event.id, "registration").catch(() => {});
 
   res.json({ event, sponsors });
+});
+
+// Session-guarded view tracking — called once per session by the frontend
+router.post("/public/register/:token/track-view", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
+  const event = await getEventByToken("registrationToken", raw);
+  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  trackImpressions(event.id, "registration").catch(() => {});
+  res.sendStatus(204);
 });
 
 router.post("/public/register/:token", async (req, res): Promise<void> => {
@@ -206,7 +214,7 @@ router.post("/public/register/:token", async (req, res): Promise<void> => {
   // Upsert participant (phone-first lookup)
   await upsertParticipant({ phone: phone ?? null, email, name });
 
-  // Track registration_submitted impressions
+  // Track registration_submitted impressions (not the page view — that comes via POST /track-view)
   trackImpressions(event.id, "registration_submitted").catch(() => {});
 
   await db.insert(activityLogTable).values({

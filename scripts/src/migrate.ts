@@ -100,6 +100,11 @@ async function main() {
       );
     `);
 
+    // ── Step 1b: Add discount_entries JSONB column to event_financials ────────
+    await client.query(`
+      ALTER TABLE event_financials ADD COLUMN IF NOT EXISTS discount_entries JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `);
+
     // ── Step 2: Upgrade completed_events.event_date TEXT → DATE ──────────────
     await client.query(`
       DO $$ BEGIN

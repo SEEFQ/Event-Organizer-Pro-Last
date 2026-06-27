@@ -224,13 +224,17 @@ async function seed() {
   }
 
   await db.insert(participantsTable).values(
-    Object.entries(pointsMap).map(([email, data]) => ({
-      email,
-      name: data.name,
-      totalPoints: data.points,
-      totalEvents: data.events,
-      referralCount: 0,
-    }))
+    Object.entries(pointsMap).map(([email, data]) => {
+      const person = people.find(p => p.email === email);
+      return {
+        email,
+        name: data.name,
+        phone: person?.phone ?? null,
+        totalPoints: data.points,
+        totalEvents: data.events,
+        referralCount: 0,
+      };
+    })
   );
 
   // ── Comments ──────────────────────────────────────────────────────────────

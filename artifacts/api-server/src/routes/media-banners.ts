@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, ne } from "drizzle-orm";
 import { db, mediaBannersTable } from "@workspace/db";
+import { promises as fsPromises } from "fs";
+import path from "path";
+import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
@@ -50,6 +53,28 @@ router.post("/media-banners", async (req, res): Promise<void> => {
   res.status(201).json(banner);
 });
 
+// Upload a file from the browser and return its public URL
+router.post("/media-banners/upload", async (req, res): Promise<void> => {
+  const { data, filename } = req.body as { data?: string; filename?: string };
+  if (!data || !filename) { res.status(400).json({ error: "data and filename are required" }); return; }
+
+  const base64Data = data.replace(/^data:[^;]+;base64,/, "");
+  const buffer = Buffer.from(base64Data, "base64");
+
+  const ext = path.extname(filename).toLowerCase();
+  const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm"];
+  if (!allowed.includes(ext)) {
+    res.status(400).json({ error: `Extension ${ext} is not allowed` }); return;
+  }
+
+  const safeName = `${randomUUID()}${ext}`;
+  const uploadDir = path.join(process.cwd(), "uploads", "banners");
+  await fsPromises.mkdir(uploadDir, { recursive: true });
+  await fsPromises.writeFile(path.join(uploadDir, safeName), buffer);
+
+  res.json({ url: `/uploads/banners/${safeName}` });
+});
+
 router.get("/media-banners/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -90,6 +115,11 @@ router.patch("/media-banners/:id", async (req, res): Promise<void> => {
   if (title !== undefined) updates.title = title;
   if (displayOrder !== undefined) updates.displayOrder = displayOrder;
   if (isActive !== undefined) updates.isActive = isActive;
+
+  // Enforce single active banner: deactivate all others when this one becomes active
+  if (isActive === true) {
+    await db.update(mediaBannersTable).set({ isActive: false }).where(ne(mediaBannersTable.id, id));
+  }
 
   const [banner] = await db
     .update(mediaBannersTable)

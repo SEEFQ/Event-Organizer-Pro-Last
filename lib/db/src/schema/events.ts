@@ -178,6 +178,8 @@ export const mediaBannersTable = pgTable("media_banners", {
 });
 
 // ─── Event Financials ────────────────────────────────────────────────────────
+export type DiscountEntry = { id: string; amount: number; reason: string; createdAt: string };
+
 export const eventFinancialsTable = pgTable("event_financials", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull().unique().references(() => eventsTable.id, { onDelete: "cascade" }),
@@ -186,6 +188,7 @@ export const eventFinancialsTable = pgTable("event_financials", {
   referralDiscounts: integer("referral_discounts").notNull().default(0),
   manualDiscounts: integer("manual_discounts").notNull().default(0),
   promoDiscounts: integer("promo_discounts").notNull().default(0),
+  discountEntries: jsonb("discount_entries").$type<DiscountEntry[]>(),
   notes: text("notes"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

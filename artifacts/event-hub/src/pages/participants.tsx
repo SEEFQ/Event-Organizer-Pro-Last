@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   useAdminListParticipants,
   useAdminSearchParticipants,
@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Trophy, Star, Users, Share2, Loader2, Search, Plus,
-  Phone, Mail, Calendar, ChevronDown, ChevronUp, UserCircle, Download,
+  Phone, Mail, Calendar, ChevronDown, ChevronUp, UserCircle, Download, FileUp, Printer,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -291,6 +291,54 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
 
 // ─── Main Admin Participants Page ─────────────────────────────────────────────
 
+// ─── Badge Printing ───────────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function printBadges(participants: Participant[]) {
+  const rows = participants.map((p) => `
+    <div class="badge">
+      <div class="name">${escapeHtml(p.name)}</div>
+      ${p.phone ? `<div class="detail">📞 ${escapeHtml(p.phone)}</div>` : ""}
+      ${p.email ? `<div class="detail">✉ ${escapeHtml(p.email)}</div>` : ""}
+      <div class="detail">Events: ${p.totalEvents} · Points: ${p.totalPoints}</div>
+    </div>`).join("");
+
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><title>Participant Badges</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .badge { border: 2px solid #333; border-radius: 8px; padding: 12px 16px; page-break-inside: avoid; }
+    .name { font-size: 18px; font-weight: bold; margin-bottom: 6px; }
+    .detail { font-size: 12px; color: #555; margin-top: 3px; }
+    @media print { body { padding: 0; } }
+  </style></head><body>
+  <div class="grid">${rows}</div>
+  <script>window.onload=function(){window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+// ─── CSV Import ───────────────────────────────────────────────────────────────
+
+function parseCSV(text: string): Array<{ name?: string; email?: string; phone?: string }> {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z]/g, ""));
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = cols[i] ?? ""; });
+    return { name: row["name"] || row["fullname"] || row["participantname"], email: row["email"] || row["emailaddress"], phone: row["phone"] || row["phonenumber"] || row["mobile"] };
+  }).filter((r) => r.name || r.email);
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function ParticipantsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -299,6 +347,13 @@ export default function ParticipantsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", email: "", phone: "", emergencyContactName: "", emergencyContactPhone: "" });
   const [page, setPage] = useState(1);
+
+  // CSV import state
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<Array<{ name?: string; email?: string; phone?: string }>>([]);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; failed: number; errors: string[] } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSearching = searchQuery.trim().length > 0;
 
@@ -341,12 +396,30 @@ export default function ParticipantsPage() {
             <h1 className="font-display text-4xl font-bold tracking-tight">Participants</h1>
             <p className="text-muted-foreground mt-1">Search and manage all participants. Click a row to view their profile.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <a href={exportUrl} download>
               <Button variant="outline" size="lg" className="gap-2">
                 <Download className="w-4 h-4" /> Export CSV
               </Button>
             </a>
+            <Button
+              variant="outline"
+              size="lg"
+              className="gap-2"
+              onClick={() => { setImportRows([]); setImportResult(null); setImportOpen(true); }}
+            >
+              <FileUp className="w-4 h-4" /> Import CSV
+            </Button>
+            {participants.length > 0 && (
+              <Button
+                variant="outline"
+                size="lg"
+                className="gap-2"
+                onClick={() => printBadges(participants)}
+              >
+                <Printer className="w-4 h-4" /> Print Badges
+              </Button>
+            )}
             <Button size="lg" className="gap-2" onClick={() => setCreateOpen(true)}>
               <Plus className="w-4 h-4" /> Create Participant
             </Button>
@@ -465,6 +538,122 @@ export default function ParticipantsPage() {
               onClose={() => setSelectedParticipant(null)}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* CSV Import dialog */}
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!o) { setImportOpen(false); setImportRows([]); setImportResult(null); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Import Participants from CSV</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            {!importResult ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Upload a CSV file with columns: <code className="bg-muted px-1 rounded">name</code>, <code className="bg-muted px-1 rounded">email</code>, <code className="bg-muted px-1 rounded">phone</code>. Existing participants will be updated (phone-first, then email).
+                </p>
+                <div
+                  className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:bg-muted/30 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FileUp className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                  <p className="font-medium">Click to choose a CSV file</p>
+                  <p className="text-xs text-muted-foreground mt-1">CSV or Excel-exported CSV (.csv)</p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const text = ev.target?.result as string;
+                      setImportRows(parseCSV(text));
+                    };
+                    reader.readAsText(file);
+                    e.target.value = "";
+                  }}
+                />
+                {importRows.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">{importRows.length} rows detected — preview:</p>
+                    <div className="border rounded-lg divide-y max-h-48 overflow-y-auto text-xs">
+                      {importRows.slice(0, 8).map((r, i) => (
+                        <div key={i} className="flex gap-3 px-3 py-1.5">
+                          <span className="font-medium truncate flex-1">{r.name ?? "—"}</span>
+                          <span className="text-muted-foreground truncate">{r.email ?? "—"}</span>
+                          <span className="text-muted-foreground shrink-0">{r.phone ?? "—"}</span>
+                        </div>
+                      ))}
+                      {importRows.length > 8 && (
+                        <div className="px-3 py-1.5 text-muted-foreground italic">…and {importRows.length - 8} more</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    disabled={importRows.length === 0 || isImporting}
+                    onClick={async () => {
+                      setIsImporting(true);
+                      try {
+                        const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+                        const res = await fetch(`${base}/api/admin/participants/import`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(importRows),
+                        });
+                        const json = await res.json() as { created?: number; updated?: number; failed?: number; errors?: string[]; error?: string };
+                        if (!res.ok) {
+                          toast({ title: "Import failed", description: json.error ?? "Server error", variant: "destructive" });
+                          return;
+                        }
+                        const result = { created: json.created ?? 0, updated: json.updated ?? 0, failed: json.failed ?? 0, errors: json.errors ?? [] };
+                        setImportResult(result);
+                        queryClient.invalidateQueries({ queryKey: getAdminListParticipantsQueryKey() });
+                      } catch {
+                        toast({ title: "Import failed", variant: "destructive" });
+                      } finally {
+                        setIsImporting(false);
+                      }
+                    }}
+                  >
+                    {isImporting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</> : `Import ${importRows.length} participants`}
+                  </Button>
+                  <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-green-700">{importResult.created}</div>
+                    <div className="text-xs text-green-600">Created</div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-blue-700">{importResult.updated}</div>
+                    <div className="text-xs text-blue-600">Updated</div>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-red-700">{importResult.failed}</div>
+                    <div className="text-xs text-red-600">Failed</div>
+                  </div>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                    <p className="text-xs font-medium text-red-700 mb-1">Errors:</p>
+                    {importResult.errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+                  </div>
+                )}
+                <Button className="w-full" onClick={() => { setImportOpen(false); setImportRows([]); setImportResult(null); }}>
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
