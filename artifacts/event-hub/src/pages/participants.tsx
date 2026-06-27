@@ -45,7 +45,27 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function printBadges(participants: Participant[]) {
+interface BadgeRegistration {
+  eventTitle: string;
+  eventStatus?: string | null;
+  eventDistance?: string | null;
+  status: string;
+}
+
+function parseKm(distanceText: string | null | undefined): number {
+  if (!distanceText) return 0;
+  const m = distanceText.match(/[\d.]+/);
+  return m ? parseFloat(m[0]) : 0;
+}
+
+function printBadges(participants: Participant[], registrations?: BadgeRegistration[]) {
+  // Build a helper: for individual print (registrations supplied), compute completed-event data
+  const completedRegs = registrations
+    ? registrations.filter((r) => r.eventStatus === "completed" && r.status !== "cancelled")
+    : null;
+  const totalKm = completedRegs ? completedRegs.reduce((sum, r) => sum + parseKm(r.eventDistance), 0) : null;
+  const completedNames = completedRegs ? completedRegs.map((r) => r.eventTitle) : null;
+
   const badgeHtml = participants.map((p) => `
     <div class="badge">
       <div class="photo-placeholder">
@@ -59,10 +79,23 @@ function printBadges(participants: Participant[]) {
       ${p.phone ? `<div class="field"><span class="label">📞</span> ${escapeHtml(p.phone)}</div>` : ""}
       ${p.email ? `<div class="field email"><span class="label">✉</span> ${escapeHtml(p.email)}</div>` : ""}
       <div class="stats">
-        <div class="stat"><div class="stat-val">${p.totalEvents}</div><div class="stat-lbl">Events</div></div>
-        <div class="stat"><div class="stat-val">${p.totalPoints}</div><div class="stat-lbl">Points</div></div>
-        <div class="stat"><div class="stat-val">___</div><div class="stat-lbl">km Total</div></div>
+        <div class="stat">
+          <div class="stat-val">${completedNames !== null ? completedNames.length : p.totalEvents}</div>
+          <div class="stat-lbl">Completed</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">${p.totalPoints}</div>
+          <div class="stat-lbl">Points</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">${totalKm !== null ? (totalKm > 0 ? totalKm.toFixed(0) : "0") : "—"}</div>
+          <div class="stat-lbl">km Total</div>
+        </div>
       </div>
+      ${completedNames && completedNames.length > 0 ? `
+      <div class="events-list">
+        ${completedNames.map((n) => `<div class="event-item">✓ ${escapeHtml(n)}</div>`).join("")}
+      </div>` : ""}
     </div>`).join("");
 
   const win = window.open("", "_blank");
@@ -85,6 +118,8 @@ function printBadges(participants: Participant[]) {
     .stats { display: flex; justify-content: space-around; border-top: 1px solid #e5e7eb; margin-top: 8px; padding-top: 8px; }
     .stat-val { font-size: 16px; font-weight: 700; color: #1f2937; }
     .stat-lbl { font-size: 8px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+    .events-list { border-top: 1px solid #e5e7eb; margin-top: 7px; padding-top: 6px; text-align: left; }
+    .event-item { font-size: 8px; color: #374151; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     @media print {
       body { padding: 8px; }
       .grid { gap: 10px; }
@@ -344,7 +379,7 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         }}>
           <Pencil className="w-3.5 h-3.5" /> Edit Details
         </Button>
-        <Button size="sm" variant="outline" className="gap-1" onClick={() => printBadges([participant])}>
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => printBadges([participant], data?.registrations)}>
           <Printer className="w-3.5 h-3.5" /> Print Badge
         </Button>
         <Button size="sm" className="gap-1" onClick={() => setAddToEventOpen(true)}>
@@ -645,16 +680,6 @@ export default function ParticipantsPage() {
             className="pl-9"
           />
         </div>
-        {!isSearching && (
-          <p className="text-xs text-muted-foreground mb-6">
-            Tip: search for participants first, then use <strong>Print Badges</strong> to print only those results.
-          </p>
-        )}
-        {isSearching && participants.length > 0 && (
-          <p className="text-xs text-muted-foreground mb-6">
-            {participants.length} result{participants.length !== 1 ? "s" : ""} — you can now print badges for these participants.
-          </p>
-        )}
 
         {/* Table */}
         {isLoading ? (

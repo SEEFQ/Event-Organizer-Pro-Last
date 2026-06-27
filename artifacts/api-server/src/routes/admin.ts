@@ -209,6 +209,8 @@ router.get("/admin/participants/:phone", async (req, res): Promise<void> => {
       eventId: registrationsTable.eventId,
       eventTitle: eventsTable.title,
       eventDate: eventsTable.date,
+      eventStatus: eventsTable.status,
+      eventDistance: eventsTable.distance,
       status: registrationsTable.status,
       registeredAt: registrationsTable.registeredAt,
     })

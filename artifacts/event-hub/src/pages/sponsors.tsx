@@ -25,7 +25,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Plus, Trash2, Globe, Instagram, Facebook, Eye, Store, Pencil,
-  TrendingUp, QrCode, CheckCircle2, ChevronDown, ChevronUp, Download, Scan,
+  TrendingUp, QrCode, CheckCircle2, ChevronDown, ChevronUp, Download,
   UserCheck, Printer,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -34,11 +34,6 @@ const SPONSOR_TYPE_ICONS: Record<string, string> = {
   cafe: "☕", restaurant: "🍽️", camping: "⛺", hotel: "🏨",
   gym: "💪", shop: "🛍️", other: "🏢",
 };
-
-function getSponsorScanUrl(scanToken: string) {
-  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
-  return `${window.location.origin}${base}/api/public/sponsor-scan/${encodeURIComponent(scanToken)}`;
-}
 
 function getSponsorCheckinUrl(scanToken: string) {
   const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
@@ -124,7 +119,20 @@ function CheckinsDialog({ sponsorId, sponsorName, checkinsCount }: {
   );
 }
 
-function printVenueCard(sponsor: { name: string; type: string; description: string | null; discountCode: string | null }, checkInUrl: string) {
+async function printVenueCard(
+  sponsor: { name: string; type: string; description: string | null; discountCode: string | null },
+  checkInUrl: string,
+) {
+  // Generate QR as a base64 PNG using qrcode (bundled via qrcode.react)
+  const QRCode = (await import("qrcode")).default;
+  const canvas = document.createElement("canvas");
+  await QRCode.toCanvas(canvas, checkInUrl, {
+    width: 220,
+    margin: 2,
+    color: { dark: "#111827", light: "#ffffff" },
+  });
+  const qrDataUrl = canvas.toDataURL("image/png");
+
   const w = window.open("", "_blank", "width=480,height=680");
   if (!w) return;
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -135,37 +143,25 @@ function printVenueCard(sponsor: { name: string; type: string; description: stri
   .icon { font-size: 48px; margin-bottom: 8px; }
   h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; }
   p { color: #6b7280; font-size: 14px; margin: 0 0 24px; }
-  #qr { margin: 0 auto 20px; display: flex; justify-content: center; }
+  .qr { margin: 0 auto 20px; }
   .instruction { font-size: 13px; color: #374151; background: #f9fafb; border-radius: 10px; padding: 12px 16px; line-height: 1.7; }
-  .badge { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 8px; padding: 4px 12px; font-size: 13px; font-weight: 700; margin-top: 16px; letter-spacing: .08em; }
+  .discount-badge { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 8px; padding: 4px 12px; font-size: 13px; font-weight: 700; margin-top: 16px; letter-spacing: .08em; }
+  @media print { body { min-height: auto; } }
 </style>
 </head><body>
 <div class="card">
   <div class="icon">${escapeHtml(SPONSOR_TYPE_ICONS[sponsor.type] ?? "🏢")}</div>
   <h1>${escapeHtml(sponsor.name)}</h1>
   ${sponsor.description ? `<p>${escapeHtml(sponsor.description)}</p>` : "<p>Our partner location</p>"}
-  <div id="qr"></div>
+  <div class="qr"><img src="${qrDataUrl}" width="220" height="220" alt="Check-in QR"/></div>
   <div class="instruction">
     📱 Scan this QR with your phone<br>
     Enter your registered number to check in<br>
     ${sponsor.discountCode ? "and unlock your discount code!" : "and record your visit!"}
   </div>
-  ${sponsor.discountCode ? `<div class="badge">🎁 Discount unlocked on check-in</div>` : ""}
+  ${sponsor.discountCode ? `<div class="discount-badge">🎁 Discount unlocked on check-in</div>` : ""}
 </div>
-<script>
-(function() {
-  var qr = document.getElementById("qr");
-  var url = ${JSON.stringify(checkInUrl)};
-  var size = 200;
-  // Build QR using Google Charts API as a safe CDN-free fallback
-  var img = document.createElement("img");
-  img.src = "https://chart.googleapis.com/chart?cht=qr&chs=" + size + "x" + size + "&chl=" + encodeURIComponent(url) + "&choe=UTF-8";
-  img.width = size; img.height = size;
-  img.onload = function() { window.print(); };
-  img.onerror = function() { window.print(); };
-  qr.appendChild(img);
-})();
-</script>
+<script>window.onload = function() { setTimeout(function() { window.print(); }, 200); };<\/script>
 </body></html>`);
   w.document.close();
 }
@@ -466,28 +462,23 @@ export default function SponsorsPage() {
                       <div className="flex flex-col items-center gap-1">
                         {/* Venue check-in QR */}
                         <div className="p-1.5 bg-white border-2 border-indigo-200 rounded-lg shadow-sm" title="Venue Check-in QR — print and place at your partner's location">
-                          <QRCodeSVG value={getSponsorCheckinUrl(s.scanToken)} size={56} />
+                          <QRCodeSVG value={getSponsorCheckinUrl(s.scanToken)} size={64} />
                         </div>
                         <span className="text-[10px] text-indigo-600 font-medium">Check-in QR</span>
                       </div>
                     )}
-                    {s.scanToken ? (
-                      <div className="flex flex-col items-center gap-1">
-                        {/* Tracked link QR */}
-                        <div className="p-1.5 bg-white border rounded-lg shadow-sm">
-                          <QRCodeSVG value={getSponsorScanUrl(s.scanToken)} size={56} />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                          <Scan className="w-2.5 h-2.5" />{s.qrScanCount ?? 0} scans
-                        </span>
-                      </div>
-                    ) : s.discountCode ? (
-                      <div className="p-1.5 bg-muted rounded-lg"><QRCodeSVG value={s.discountCode} size={56} /></div>
-                    ) : null}
+                    {!s.scanToken && s.discountCode && (
+                      <div className="p-1.5 bg-muted rounded-lg"><QRCodeSVG value={s.discountCode} size={64} /></div>
+                    )}
                     {s.scanToken && (
                       <Button
                         variant="ghost" size="sm" className="h-8 w-8 p-0 text-indigo-600 hover:text-indigo-700" title="Print venue card"
-                        onClick={() => printVenueCard({ name: s.name, type: s.type, description: s.description ?? null, discountCode: s.discountCode ?? null }, getSponsorCheckinUrl(s.scanToken!))}
+                        onClick={() => {
+                          printVenueCard(
+                            { name: s.name, type: s.type, description: s.description ?? null, discountCode: s.discountCode ?? null },
+                            getSponsorCheckinUrl(s.scanToken!),
+                          ).catch(console.error);
+                        }}
                       >
                         <Printer className="h-4 w-4" />
                       </Button>

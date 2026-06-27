@@ -516,6 +516,10 @@ export interface AdminRegistrationSummary {
   eventId: number;
   eventTitle: string;
   eventDate: string;
+  /** Event-level completion status (upcoming/ongoing/completed/cancelled) */
+  eventStatus?: string | null;
+  /** Distance text as entered on the event, e.g. "15 km" */
+  eventDistance?: string | null;
   status: AdminRegistrationSummaryStatus;
   registeredAt: string;
 }
