@@ -24,9 +24,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Trash2, Globe, Instagram, Facebook, Eye, Store, Pencil,
-  TrendingUp, QrCode, CheckCircle2, ChevronDown, ChevronUp, Download,
+  TrendingUp, QrCode, CheckCircle2, ChevronDown, ChevronUp, Download, Scan,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+
+function getSponsorScanUrl(scanToken: string) {
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  return `${window.location.origin}${base}/api/public/sponsor-scan/${encodeURIComponent(scanToken)}`;
+}
 
 const TYPE_LABELS: Record<string, string> = {
   cafe: "Café", restaurant: "Restaurant", camping: "Camping / Outdoors",
@@ -313,9 +318,19 @@ export default function SponsorsPage() {
                     </div>
                   </div>
                   <div className="flex items-start gap-2 shrink-0">
-                    {s.discountCode && (
+                    {/* Tracked scan QR (scanToken) takes priority; fallback to discount code QR */}
+                    {s.scanToken ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="p-1.5 bg-white border rounded-lg shadow-sm">
+                          <QRCodeSVG value={getSponsorScanUrl(s.scanToken)} size={56} />
+                        </div>
+                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                          <Scan className="w-2.5 h-2.5" />{s.qrScanCount ?? 0} scans
+                        </span>
+                      </div>
+                    ) : s.discountCode ? (
                       <div className="p-1.5 bg-muted rounded-lg"><QRCodeSVG value={s.discountCode} size={56} /></div>
-                    )}
+                    ) : null}
                     <a href={`/api/admin/sponsors/${s.id}/export`} download title="Export analytics CSV">
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Download className="h-4 w-4" /></Button>
                     </a>

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   useAdminListParticipants,
   useAdminSearchParticipants,
@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Trophy, Star, Users, Loader2, Search, Plus,
-  Phone, Mail, Calendar, UserCircle, Download, FileUp, Printer, Pencil,
+  Phone, Mail, Calendar, UserCircle, Download, FileUp, Printer, Pencil, X,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -116,6 +116,8 @@ function parseCSV(text: string): Array<{ name?: string; email?: string; phone?: 
 
 // ─── Participant Profile Panel ────────────────────────────────────────────────
 
+interface ParticipantEmail { id: number; email: string; isPrimary: boolean; }
+
 function ParticipantProfile({ participant: baseParticipant, onClose }: { participant: Participant; onClose: () => void }) {
   const phone = baseParticipant.phone ?? null;
   const { toast } = useToast();
@@ -134,14 +136,67 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
     emergencyContactPhone: baseParticipant.emergencyContactPhone ?? "",
   });
 
+  // Additional emails
+  const [additionalEmails, setAdditionalEmails] = useState<ParticipantEmail[]>([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [addingEmail, setAddingEmail] = useState(false);
+
   const { data, isLoading } = useAdminGetParticipant(encodeURIComponent(phone ?? ""), {
     query: { enabled: !!phone },
   });
   const { data: events } = useListEvents();
 
+  // Load additional emails on mount
+  useEffect(() => {
+    if (!phone) return;
+    setLoadingEmails(true);
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    fetch(`${base}/api/admin/participants/${encodeURIComponent(phone)}/emails`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setAdditionalEmails(data as ParticipantEmail[]))
+      .catch(() => {})
+      .finally(() => setLoadingEmails(false));
+  }, [phone]);
+
+  const handleAddEmail = async () => {
+    if (!phone || !newEmail.trim()) return;
+    setAddingEmail(true);
+    try {
+      const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+      const res = await fetch(`${base}/api/admin/participants/${encodeURIComponent(phone)}/emails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail.trim() }),
+      });
+      if (res.ok) {
+        const entry = await res.json() as ParticipantEmail;
+        setAdditionalEmails((prev) => [...prev, entry]);
+        setNewEmail("");
+        toast({ title: "Email added" });
+      } else {
+        const j = await res.json() as { error?: string };
+        toast({ title: "Failed", description: j.error ?? "Error", variant: "destructive" });
+      }
+    } finally {
+      setAddingEmail(false);
+    }
+  };
+
+  const handleDeleteEmail = async (emailId: number) => {
+    if (!phone) return;
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    await fetch(`${base}/api/admin/participants/${encodeURIComponent(phone)}/emails/${emailId}`, { method: "DELETE" });
+    setAdditionalEmails((prev) => prev.filter((e) => e.id !== emailId));
+  };
+
   // Refresh edit form when data loads
   const participant = data?.participant ?? baseParticipant;
   const registrations = data?.registrations ?? [];
+
+  // Shared error message extractor for ApiError (body in .data, not .response.data)
+  const apiErrMsg = (err: unknown, fallback = "Failed") =>
+    (err as { data?: { error?: string } })?.data?.error ?? fallback;
 
   const changePhoneMutation = useAdminChangeParticipantPhone({
     mutation: {
@@ -153,8 +208,7 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         onClose();
       },
       onError: (err: unknown) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
-        toast({ title: "Error", description: msg, variant: "destructive" });
+        toast({ title: "Error", description: apiErrMsg(err), variant: "destructive" });
       },
     },
   });
@@ -168,8 +222,7 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         if (phone) queryClient.invalidateQueries({ queryKey: getAdminGetParticipantQueryKey(encodeURIComponent(phone)) });
       },
       onError: (err: unknown) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
-        toast({ title: "Error", description: msg, variant: "destructive" });
+        toast({ title: "Error", description: apiErrMsg(err), variant: "destructive" });
       },
     },
   });
@@ -183,8 +236,7 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         if (phone) queryClient.invalidateQueries({ queryKey: getAdminGetParticipantQueryKey(encodeURIComponent(phone)) });
       },
       onError: (err: unknown) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
-        toast({ title: "Error", description: msg, variant: "destructive" });
+        toast({ title: "Error", description: apiErrMsg(err), variant: "destructive" });
       },
     },
   });
@@ -237,9 +289,51 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         )}
       </div>
 
+      {/* Additional emails */}
+      <div className="border rounded-xl p-3 bg-muted/20">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Mail className="w-3 h-3" /> Additional Emails
+          </div>
+          {loadingEmails && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+        </div>
+        <div className="space-y-1 mb-2">
+          {additionalEmails.length === 0 && !loadingEmails && (
+            <p className="text-xs text-muted-foreground italic">No additional emails stored.</p>
+          )}
+          {additionalEmails.map((e) => (
+            <div key={e.id} className="flex items-center gap-2 text-xs">
+              <span className="flex-1 truncate text-foreground">{e.email}</span>
+              <button onClick={() => handleDeleteEmail(e.id)} className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="email@example.com"
+            className="h-7 text-xs flex-1"
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddEmail(); } }}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs shrink-0"
+            disabled={!newEmail.trim() || addingEmail}
+            onClick={handleAddEmail}
+          >
+            {addingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+          </Button>
+        </div>
+      </div>
+
       {/* Actions */}
-      <div className="flex gap-2">
-        <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={() => {
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => {
           setEditForm({
             name: participant.name,
             email: participant.email,
@@ -250,8 +344,11 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         }}>
           <Pencil className="w-3.5 h-3.5" /> Edit Details
         </Button>
-        <Button size="sm" className="flex-1" onClick={() => setAddToEventOpen(true)}>
-          <Plus className="w-3.5 h-3.5 mr-1" /> Add to Event
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => printBadges([participant])}>
+          <Printer className="w-3.5 h-3.5" /> Print Badge
+        </Button>
+        <Button size="sm" className="gap-1" onClick={() => setAddToEventOpen(true)}>
+          <Plus className="w-3.5 h-3.5" /> Add to Event
         </Button>
       </div>
 

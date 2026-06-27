@@ -37,6 +37,11 @@ const sponsorStatsSelect = {
     WHERE si.sponsor_id = sponsors.id
     AND si.page_type = 'photo'
   )::int`,
+  qrScanCount: sql<number>`(
+    SELECT COUNT(*) FROM sponsor_impressions si
+    WHERE si.sponsor_id = sponsors.id
+    AND si.page_type = 'qr_scan'
+  )::int`,
   eventsCount: sql<number>`(
     SELECT COUNT(*) FROM event_sponsors es
     WHERE es.sponsor_id = sponsors.id

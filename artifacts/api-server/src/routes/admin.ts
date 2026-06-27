@@ -3,7 +3,7 @@ import { eq, or, ilike, and, desc, sql } from "drizzle-orm";
 import {
   db, participantsTable, registrationsTable, eventsTable,
   activityLogTable, sponsorImpressionsTable, eventSponsorsTable,
-  sponsorsTable,
+  sponsorsTable, participantEmailsTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -271,6 +271,49 @@ router.patch("/admin/participants/:phone/phone", async (req, res): Promise<void>
 
   if (!participant) { res.status(404).json({ error: "Participant not found" }); return; }
   res.json(participant);
+});
+
+// ─── Participant additional emails ────────────────────────────────────────────
+router.get("/admin/participants/:phone/emails", async (req, res): Promise<void> => {
+  const phone = decodeURIComponent(req.params.phone);
+  const [participant] = await db.select().from(participantsTable).where(eq(participantsTable.phone, phone));
+  if (!participant) { res.status(404).json({ error: "Participant not found" }); return; }
+  const emails = await db.select().from(participantEmailsTable)
+    .where(eq(participantEmailsTable.participantId, participant.id))
+    .orderBy(participantEmailsTable.createdAt);
+  res.json(emails);
+});
+
+router.post("/admin/participants/:phone/emails", async (req, res): Promise<void> => {
+  const phone = decodeURIComponent(req.params.phone);
+  const { email } = req.body as { email?: string };
+  const trimmedEmail = email?.trim().toLowerCase();
+  if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    res.status(400).json({ error: "A valid email address is required" }); return;
+  }
+  const [participant] = await db.select().from(participantsTable).where(eq(participantsTable.phone, phone));
+  if (!participant) { res.status(404).json({ error: "Participant not found" }); return; }
+  const [entry] = await db.insert(participantEmailsTable)
+    .values({ participantId: participant.id, email: trimmedEmail, isPrimary: false })
+    .returning();
+  res.status(201).json(entry);
+});
+
+router.delete("/admin/participants/:phone/emails/:emailId", async (req, res): Promise<void> => {
+  const phone = decodeURIComponent(req.params.phone);
+  const emailId = parseInt(req.params.emailId);
+  if (isNaN(emailId)) { res.status(400).json({ error: "Invalid email ID" }); return; }
+
+  // Resolve participant to enforce ownership — prevent cross-participant deletion
+  const [participant] = await db.select().from(participantsTable).where(eq(participantsTable.phone, phone));
+  if (!participant) { res.status(404).json({ error: "Participant not found" }); return; }
+
+  const deleted = await db.delete(participantEmailsTable)
+    .where(and(eq(participantEmailsTable.id, emailId), eq(participantEmailsTable.participantId, participant.id)))
+    .returning();
+
+  if (deleted.length === 0) { res.status(404).json({ error: "Email not found for this participant" }); return; }
+  res.status(204).end();
 });
 
 // ─── Admin: manually add participant to an event ─────────────────────────────

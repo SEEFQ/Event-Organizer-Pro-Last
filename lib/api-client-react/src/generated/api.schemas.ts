@@ -369,12 +369,15 @@ export interface SponsorWithStats {
   description?: string | null;
   /** @nullable */
   discountCode?: string | null;
+  /** @nullable */
+  scanToken?: string | null;
   createdAt: string;
   pageViews: number;
   registrationsFromPage: number;
   approvedRegistrations: number;
   conversionRate: number;
   photoImpressions?: number;
+  qrScanCount?: number;
   eventsCount: number;
 }
 

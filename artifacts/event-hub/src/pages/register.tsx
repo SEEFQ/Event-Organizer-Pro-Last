@@ -251,8 +251,9 @@ export default function RegisterPage() {
         queryClient.invalidateQueries({ queryKey: getGetEventByTokenQueryKey(token!) });
       },
       onError: (err: unknown) => {
+        // ApiError stores response body in .data, not .response.data
         const message =
-          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          (err as { data?: { error?: string } })?.data?.error ??
           "Registration failed. Please try again.";
         if (message.toLowerCase().includes("already registered")) {
           setAlreadyRegistered(true);
