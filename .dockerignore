@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (installed fresh inside Docker)
+node_modules
+**/node_modules
+
+# Build output (built fresh inside Docker)
+**/dist
+!artifacts/api-server/build.mjs
+
+# Replit / dev tooling
+.replit
+replit.nix
+.local
+.cache
+.config
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Env files (pass secrets via environment variables or secrets manager)
+.env
+.env.*
+!.env.example
+
+# Uploaded files (mount as a volume in production)
+uploads/
+
+# Assets not needed in the image
+attached_assets/
+
+# Test / coverage
+coverage/
+*.test.ts
+*.spec.ts

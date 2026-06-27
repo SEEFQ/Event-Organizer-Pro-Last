@@ -280,21 +280,36 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
     return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   }
 
+  // Compute live stats from actual registration data (more accurate than cached counters).
+  const completedRegs = registrations.filter(
+    (r) => r.eventStatus === "completed" && r.status !== "cancelled",
+  );
+  const totalKmVal = completedRegs.reduce((sum, r) => sum + parseKm(r.eventDistance), 0);
+  const eventCount = data
+    ? registrations.filter((r) => r.status !== "cancelled").length
+    : participant.totalEvents;
+
   return (
     <div className="space-y-5">
       {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-muted/40 rounded-xl p-3 text-center">
-          <div className="text-xs text-muted-foreground mb-0.5">Points</div>
-          <div className="text-xl font-bold text-amber-600">{participant.totalPoints}</div>
+      <div className="grid grid-cols-4 gap-2">
+        <div className="bg-muted/40 rounded-xl p-2.5 text-center">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Points</div>
+          <div className="text-lg font-bold text-amber-600">{participant.totalPoints}</div>
         </div>
-        <div className="bg-muted/40 rounded-xl p-3 text-center">
-          <div className="text-xs text-muted-foreground mb-0.5">Events</div>
-          <div className="text-xl font-bold">{participant.totalEvents}</div>
+        <div className="bg-muted/40 rounded-xl p-2.5 text-center">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Events</div>
+          <div className="text-lg font-bold">{eventCount}</div>
         </div>
-        <div className="bg-muted/40 rounded-xl p-3 text-center">
-          <div className="text-xs text-muted-foreground mb-0.5">Referrals</div>
-          <div className="text-xl font-bold text-blue-600">{participant.referralCount}</div>
+        <div className="bg-muted/40 rounded-xl p-2.5 text-center">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Km Total</div>
+          <div className="text-lg font-bold text-green-600">
+            {totalKmVal > 0 ? totalKmVal.toFixed(0) : "—"}
+          </div>
+        </div>
+        <div className="bg-muted/40 rounded-xl p-2.5 text-center">
+          <div className="text-[10px] text-muted-foreground mb-0.5">Referrals</div>
+          <div className="text-lg font-bold text-blue-600">{participant.referralCount}</div>
         </div>
       </div>
 

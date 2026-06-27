@@ -170,15 +170,76 @@ async function main() {
         ON venue_checkins (sponsor_id, participant_id, date(checked_in_at AT TIME ZONE 'UTC'));
     `);
 
+    // ── Step 6: Deduplicate participants + backfill missing phones ─────────────
+
+    // 6a: Merge duplicate participants sharing the same non-empty phone.
+    //     Keep the record with the lowest id; reassign venue_checkins to it
+    //     (skip conflicts), then delete losers.
+    await client.query(
+      "DO $dedup$\n" +
+      "DECLARE\n" +
+      "  dup   RECORD;\n" +
+      "  loser INTEGER;\n" +
+      "BEGIN\n" +
+      "  FOR dup IN\n" +
+      "    SELECT phone, MIN(id) AS keep_id\n" +
+      "    FROM participants\n" +
+      "    WHERE phone IS NOT NULL AND phone != ''\n" +
+      "    GROUP BY phone\n" +
+      "    HAVING COUNT(*) > 1\n" +
+      "  LOOP\n" +
+      "    FOR loser IN\n" +
+      "      SELECT id FROM participants\n" +
+      "      WHERE phone = dup.phone AND id != dup.keep_id\n" +
+      "    LOOP\n" +
+      "      DELETE FROM venue_checkins vc\n" +
+      "      WHERE vc.participant_id = loser\n" +
+      "        AND EXISTS (\n" +
+      "          SELECT 1 FROM venue_checkins vc2\n" +
+      "          WHERE vc2.sponsor_id = vc.sponsor_id\n" +
+      "            AND vc2.participant_id = dup.keep_id\n" +
+      "            AND DATE(vc2.checked_in_at AT TIME ZONE 'UTC')\n" +
+      "              = DATE(vc.checked_in_at AT TIME ZONE 'UTC')\n" +
+      "        );\n" +
+      "      UPDATE venue_checkins SET participant_id = dup.keep_id WHERE participant_id = loser;\n" +
+      "      DELETE FROM participants WHERE id = loser;\n" +
+      "    END LOOP;\n" +
+      "  END LOOP;\n" +
+      "END $dedup$;"
+    );
+
+    // 6b: Give anonymous phone numbers to participants with no phone so the
+    //     unique constraint is satisfied and future upserts won't create duplicates.
+    await client.query(
+      "UPDATE participants " +
+      "SET phone = 'ANON-' || replace(gen_random_uuid()::text, '-', '') " +
+      "WHERE phone IS NULL OR phone = '';"
+    );
+
+    // 6c: Recompute total_events from actual non-cancelled registrations so
+    //     the cached counter matches reality after the dedup above.
+    await client.query(
+      "UPDATE participants p " +
+      "SET total_events = (" +
+      "  SELECT COUNT(*)::int FROM registrations r " +
+      "  WHERE r.phone = p.phone AND r.status != 'cancelled'" +
+      ") " +
+      "WHERE p.phone NOT LIKE 'ANON-%';"
+    );
+
     console.log("✓ All migrations applied successfully");
+  } catch (err) {
+    // Re-throw so main().catch can log it with exit code 1.
+    throw err;
   } finally {
     client.release();
     await pool.end();
-    process.exit(0);
   }
 }
 
-main().catch((err) => {
-  console.error("Migration failed:", err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error("Migration failed:", err);
+    process.exit(1);
+  });

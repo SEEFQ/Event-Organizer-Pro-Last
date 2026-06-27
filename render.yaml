@@ -1,0 +1,63 @@
+# Render.com infrastructure-as-code for Outdoor Event Hub
+# Docs: https://render.com/docs/infrastructure-as-code
+#
+# How to deploy:
+#   1. Push this repo to GitHub.
+#   2. In Render dashboard → New → Blueprint → connect the repo.
+#   3. Render provisions the database then the web service automatically.
+#   4. After first deploy, open a shell on the web service and run the migration:
+#        cd /opt/render/project/src && node scripts/dist/migrate.js
+#      (Or trigger the one-shot migrate job if you add it later.)
+
+services:
+  # ── Web service: API + bundled React frontend ────────────────────────────────
+  - type: web
+    name: outdoor-event-hub
+    runtime: node
+    plan: free          # change to 'starter' or higher for production workloads
+    region: oregon      # change to the region closest to your users
+
+    # The build installs pnpm, builds the React SPA (BASE_PATH=/ for root
+    # deployment), and bundles the API server with esbuild.
+    # The migration is run as a pre-start hook so it executes on every deploy
+    # before traffic hits the new code.
+    buildCommand: >-
+      npm install -g pnpm@10 &&
+      pnpm install --frozen-lockfile &&
+      BASE_PATH=/ PORT=3000 pnpm --filter @workspace/event-hub run build &&
+      pnpm --filter @workspace/api-server run build
+
+    # Run migration then start the server (tsx is available via devDependencies
+    # installed during build, so this works in Render's build environment).
+    startCommand: >-
+      npx --yes tsx scripts/src/migrate.ts &&
+      node --enable-source-maps ./artifacts/api-server/dist/index.mjs
+
+    healthCheckPath: /api/events
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000           # Render's standard port for web services
+
+      - key: STATIC_DIR
+        value: ./artifacts/event-hub/dist/public
+
+      # Injected automatically from the database defined below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: outdoor-event-hub-db
+          property: connectionString
+
+      # Auto-generated secret — rotate via Render dashboard if needed
+      - key: SESSION_SECRET
+        generateValue: true
+
+# ── Managed PostgreSQL database ───────────────────────────────────────────────
+databases:
+  - name: outdoor-event-hub-db
+    plan: free            # free tier: 1 GB storage, no standby
+    databaseName: outdoor_event_hub
+    user: event_hub

@@ -124,12 +124,27 @@ router.post("/admin/participants", async (req, res): Promise<void> => {
 
   if (!name || !email) { res.status(400).json({ error: "name and email are required" }); return; }
 
+  // If phone provided and a participant already has it, update their info instead
+  // of creating a duplicate.
   if (phone) {
     const [existing] = await db
       .select()
       .from(participantsTable)
       .where(eq(participantsTable.phone, phone));
-    if (existing) { res.status(409).json({ error: "Phone already registered" }); return; }
+    if (existing) {
+      const [updated] = await db
+        .update(participantsTable)
+        .set({
+          name,
+          email,
+          ...(emergencyContactName !== undefined ? { emergencyContactName } : {}),
+          ...(emergencyContactPhone !== undefined ? { emergencyContactPhone } : {}),
+        })
+        .where(eq(participantsTable.id, existing.id))
+        .returning();
+      res.json(updated);
+      return;
+    }
   }
 
   const [participant] = await db

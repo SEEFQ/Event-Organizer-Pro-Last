@@ -33,4 +33,23 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api", router);
 
+// In production (Docker / Render) the built React app is served as static files.
+// Set STATIC_DIR to the path of the Vite build output (artifacts/event-hub/dist/public).
+const staticDir = process.env["STATIC_DIR"]
+  ? path.resolve(process.env["STATIC_DIR"])  // normalise to absolute path
+  : null;
+if (staticDir) {
+  app.use(express.static(staticDir));
+  // SPA fallback: any non-API GET that doesn't match a real file → index.html.
+  // Using { root } so sendFile always receives a relative filename over an
+  // absolute base, which is the form Express accepts unambiguously.
+  app.use((req, res, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/api")) {
+      res.sendFile("index.html", { root: staticDir });
+    } else {
+      next();
+    }
+  });
+}
+
 export default app;
