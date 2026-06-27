@@ -1,0 +1,13 @@
+Provide a reliable way to store uploaded images, videos, and banners. If keeping them on the website (with the ability to manage and delete unused files) adds too much complexity, suggest a free service that hosts files and provides public URLs.
+For banners, allow both uploading from the local computer and selecting the currently stored banner. Only one active banner should exist at a time (replace the previous one), and support GIF files.
+For Past Events, allow selecting from events already created on the website.
+Fix text input fields so they keep focus while typing and only lose focus when I intentionally click another field.
+For participant discounts, allow multiple individual discount entries (amount + reason). Automatically calculate the total discount while preserving the full discount history.
+Make Event Type available when creating a new event.
+Allow participants to have multiple email addresses, while keeping the phone number as the primary contact.
+Use the phone number as the unique primary identifier for participants. A participant should only be able to register once per event. If they attempt to register again, the registration page should inform them that they are already registered.
+Allow event administrators to manually add existing participants to an event without requiring them to register. Provide a search function to find and add participants.
+When generating dummy participants, assign each one a unique random phone number so validation and uniqueness constraints are never violated.
+Allow importing participants from CSV or Excel files.
+Generate downloadable PDF Participant Cards/Badges containing the participant's information, events joined, total kilometers/points earned, and a placeholder for a profile photo that can be added later in Canva, Photoshop, or similar software. Support generating badges for both individual participants and in bulk.
+Fix the sponsor page view counter. It is currently incrementing twice per page load and is unreliable. Implement a more accurate and robust view-counting mechanism.
