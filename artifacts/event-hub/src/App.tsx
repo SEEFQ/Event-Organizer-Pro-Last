@@ -13,6 +13,7 @@ import AdminEventTypesPage from "@/pages/admin-event-types";
 import AdminMediaBannersPage from "@/pages/admin-media-banners";
 import AdminCompletedEventsPage from "@/pages/admin-completed-events";
 import AdminAuditLogPage from "@/pages/admin-audit-log";
+import SponsorCheckinPage from "@/pages/sponsor-checkin";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/admin/completed-events" component={AdminCompletedEventsPage} />
       <Route path="/admin/audit-log" component={AdminAuditLogPage} />
       <Route path="/r/:token" component={RegisterPage} />
+      <Route path="/check-in/:scanToken" component={SponsorCheckinPage} />
       <Route component={NotFound} />
     </Switch>
   );

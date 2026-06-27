@@ -194,6 +194,17 @@ export const eventFinancialsTable = pgTable("event_financials", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Venue Check-ins ─────────────────────────────────────────────────────────
+// Records when an event participant physically visits a sponsor's location.
+// One check-in per (sponsor, participant) per calendar day (UTC) enforced via unique index.
+export const venueCheckinsTable = pgTable("venue_checkins", {
+  id: serial("id").primaryKey(),
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsorsTable.id, { onDelete: "cascade" }),
+  participantId: integer("participant_id").notNull().references(() => participantsTable.id, { onDelete: "cascade" }),
+  eventId: integer("event_id").references(() => eventsTable.id, { onDelete: "set null" }),
+  checkedInAt: timestamp("checked_in_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 export const insertEventSchema = createInsertSchema(eventsTable).omit({ id: true, createdAt: true });
 export const insertRegistrationSchema = createInsertSchema(registrationsTable).omit({ id: true, registeredAt: true });

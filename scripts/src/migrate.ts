@@ -156,6 +156,20 @@ async function main() {
       AND e.event_type_id IS NULL;
     `);
 
+    // ── Step 5: Venue check-ins table ─────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS venue_checkins (
+        id SERIAL PRIMARY KEY,
+        sponsor_id INTEGER NOT NULL REFERENCES sponsors(id) ON DELETE CASCADE,
+        participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+        event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+        checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS venue_checkins_daily_uniq
+        ON venue_checkins (sponsor_id, participant_id, date(checked_in_at AT TIME ZONE 'UTC'));
+    `);
+
     console.log("✓ All migrations applied successfully");
   } finally {
     client.release();

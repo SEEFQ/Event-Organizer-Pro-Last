@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq, ne, and, sql } from "drizzle-orm";
+import { eq, ne, and, sql, desc } from "drizzle-orm";
 import {
   db, eventsTable, registrationsTable, activityLogTable, photosTable,
   participantsTable, eventSponsorsTable, sponsorsTable, sponsorImpressionsTable,
-  participantEmailsTable,
+  participantEmailsTable, venueCheckinsTable,
 } from "@workspace/db";
 import { randomUUID } from "crypto";
 
@@ -257,6 +257,74 @@ router.get("/public/sponsor-scan/:token", async (req, res): Promise<void> => {
     res.redirect(302, sponsor.website);
   } else {
     res.json({ name: sponsor.name, message: "Scan recorded. Thank you!" });
+  }
+});
+
+// ─── Sponsor Venue Check-in (participant → sponsor) ───────────────────────────
+
+router.get("/public/check-in/:scanToken", async (req, res): Promise<void> => {
+  const [sponsor] = await db.select().from(sponsorsTable).where(eq(sponsorsTable.scanToken, req.params.scanToken));
+  if (!sponsor) { res.status(404).json({ error: "Invalid check-in link" }); return; }
+  // Intentionally omit discountCode here — it is only revealed after a successful check-in POST
+  res.json({
+    id: sponsor.id,
+    name: sponsor.name,
+    type: sponsor.type,
+    logoUrl: sponsor.logoUrl,
+    description: sponsor.description,
+    hasDiscount: !!sponsor.discountCode,  // tell the page a reward exists, without revealing the code
+    website: sponsor.website,
+  });
+});
+
+router.post("/public/check-in/:scanToken", async (req, res): Promise<void> => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone?.trim()) { res.status(400).json({ error: "Phone number is required" }); return; }
+
+  const [sponsor] = await db.select().from(sponsorsTable).where(eq(sponsorsTable.scanToken, req.params.scanToken));
+  if (!sponsor) { res.status(404).json({ error: "Invalid check-in link" }); return; }
+
+  // Look up participant by phone
+  const [participant] = await db.select().from(participantsTable).where(eq(participantsTable.phone, phone.trim()));
+  if (!participant) {
+    res.status(404).json({ error: "You're not yet registered for any of our events. Please register first." });
+    return;
+  }
+
+  // Find most recent confirmed/pending registration to link event
+  const [latestReg] = await db
+    .select({ eventId: registrationsTable.eventId })
+    .from(registrationsTable)
+    .where(and(eq(registrationsTable.phone, participant.phone!), ne(registrationsTable.status, "cancelled")))
+    .orderBy(desc(registrationsTable.registeredAt))
+    .limit(1);
+
+  const eventId = latestReg?.eventId ?? null;
+
+  // Insert or detect duplicate (same sponsor + participant + today UTC)
+  try {
+    const [checkin] = await db
+      .insert(venueCheckinsTable)
+      .values({ sponsorId: sponsor.id, participantId: participant.id, eventId })
+      .returning();
+    res.status(201).json({
+      participantName: participant.name,
+      discountCode: sponsor.discountCode,
+      alreadyCheckedIn: false,
+      checkedInAt: checkin.checkedInAt,
+    });
+  } catch (err: unknown) {
+    // Unique constraint violation → already checked in today
+    const pgErr = err as { code?: string };
+    if (pgErr.code === "23505") {
+      res.json({
+        participantName: participant.name,
+        discountCode: sponsor.discountCode,
+        alreadyCheckedIn: true,
+      });
+    } else {
+      throw err;
+    }
   }
 });
 

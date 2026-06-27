@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, sponsorsTable, eventSponsorsTable, sponsorImpressionsTable, eventsTable } from "@workspace/db";
+import { eq, sql, desc } from "drizzle-orm";
+import { db, sponsorsTable, eventSponsorsTable, sponsorImpressionsTable, eventsTable, venueCheckinsTable, participantsTable, registrationsTable } from "@workspace/db";
 import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
@@ -45,6 +45,10 @@ const sponsorStatsSelect = {
   eventsCount: sql<number>`(
     SELECT COUNT(*) FROM event_sponsors es
     WHERE es.sponsor_id = sponsors.id
+  )::int`,
+  venueCheckinsCount: sql<number>`(
+    SELECT COUNT(*) FROM venue_checkins vc
+    WHERE vc.sponsor_id = sponsors.id
   )::int`,
 };
 
@@ -200,6 +204,73 @@ router.delete("/sponsors/:id", async (req, res): Promise<void> => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(sponsorsTable).where(eq(sponsorsTable.id, id));
   res.sendStatus(204);
+});
+
+// ─── Venue check-in list (admin) ──────────────────────────────────────────────
+router.get("/sponsors/:id/checkins", async (req, res): Promise<void> => {
+  const sponsorId = parseInt(req.params.id);
+  if (isNaN(sponsorId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [sponsor] = await db.select().from(sponsorsTable).where(eq(sponsorsTable.id, sponsorId));
+  if (!sponsor) { res.status(404).json({ error: "Sponsor not found" }); return; }
+
+  const checkins = await db
+    .select({
+      id: venueCheckinsTable.id,
+      checkedInAt: venueCheckinsTable.checkedInAt,
+      participantName: participantsTable.name,
+      participantPhone: participantsTable.phone,
+      eventTitle: eventsTable.title,
+      eventId: venueCheckinsTable.eventId,
+    })
+    .from(venueCheckinsTable)
+    .innerJoin(participantsTable, eq(venueCheckinsTable.participantId, participantsTable.id))
+    .leftJoin(eventsTable, eq(venueCheckinsTable.eventId, eventsTable.id))
+    .where(eq(venueCheckinsTable.sponsorId, sponsorId))
+    .orderBy(desc(venueCheckinsTable.checkedInAt));
+
+  res.json(checkins);
+});
+
+// ─── Venue check-in CSV export (admin) ────────────────────────────────────────
+router.get("/sponsors/:id/checkins/export", async (req, res): Promise<void> => {
+  const sponsorId = parseInt(req.params.id);
+  if (isNaN(sponsorId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [sponsor] = await db.select().from(sponsorsTable).where(eq(sponsorsTable.id, sponsorId));
+  if (!sponsor) { res.status(404).json({ error: "Sponsor not found" }); return; }
+
+  const checkins = await db
+    .select({
+      checkedInAt: venueCheckinsTable.checkedInAt,
+      participantName: participantsTable.name,
+      participantPhone: participantsTable.phone,
+      eventTitle: eventsTable.title,
+    })
+    .from(venueCheckinsTable)
+    .innerJoin(participantsTable, eq(venueCheckinsTable.participantId, participantsTable.id))
+    .leftJoin(eventsTable, eq(venueCheckinsTable.eventId, eventsTable.id))
+    .where(eq(venueCheckinsTable.sponsorId, sponsorId))
+    .orderBy(desc(venueCheckinsTable.checkedInAt));
+
+  const csvCell = (v: string) => {
+    // Quote all cells; prefix formula-injection triggers with a single quote
+    const safe = v.startsWith("=") || v.startsWith("+") || v.startsWith("-") || v.startsWith("@") ? `'${v}` : v;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+
+  const header = ["Name", "Phone", "Event", "Checked In At"].join(",");
+  const rows = checkins.map((c) => [
+    csvCell(c.participantName ?? ""),
+    csvCell(c.participantPhone ?? ""),
+    csvCell(c.eventTitle ?? ""),
+    csvCell(c.checkedInAt.toISOString()),
+  ].join(","));
+
+  const csv = [header, ...rows].join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="sponsor-${sponsorId}-checkins.csv"`);
+  res.send(csv);
 });
 
 router.get("/events/:id/sponsors", async (req, res): Promise<void> => {

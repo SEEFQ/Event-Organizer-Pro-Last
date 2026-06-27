@@ -379,6 +379,7 @@ export interface SponsorWithStats {
   photoImpressions?: number;
   qrScanCount?: number;
   eventsCount: number;
+  venueCheckinsCount?: number;
 }
 
 export interface SponsorEventBreakdown {

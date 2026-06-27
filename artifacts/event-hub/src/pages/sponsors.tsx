@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListSponsors,
   useListSponsorsAnalytics,
@@ -22,15 +22,152 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import {
   Plus, Trash2, Globe, Instagram, Facebook, Eye, Store, Pencil,
   TrendingUp, QrCode, CheckCircle2, ChevronDown, ChevronUp, Download, Scan,
+  UserCheck, Printer,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+
+const SPONSOR_TYPE_ICONS: Record<string, string> = {
+  cafe: "☕", restaurant: "🍽️", camping: "⛺", hotel: "🏨",
+  gym: "💪", shop: "🛍️", other: "🏢",
+};
 
 function getSponsorScanUrl(scanToken: string) {
   const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
   return `${window.location.origin}${base}/api/public/sponsor-scan/${encodeURIComponent(scanToken)}`;
+}
+
+function getSponsorCheckinUrl(scanToken: string) {
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  return `${window.location.origin}${base}/check-in/${encodeURIComponent(scanToken)}`;
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+interface CheckinRecord {
+  id: number;
+  checkedInAt: string;
+  participantName: string;
+  participantPhone: string | null;
+  eventTitle: string | null;
+}
+
+function CheckinsDialog({ sponsorId, sponsorName, checkinsCount }: {
+  sponsorId: number; sponsorName: string; checkinsCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [checkins, setCheckins] = useState<CheckinRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    fetch(`${base}/api/sponsors/${sponsorId}/checkins`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setCheckins(data as CheckinRecord[]))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open, sponsorId]);
+
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button className="flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-full transition-colors">
+          <UserCheck className="w-3 h-3" /> {checkinsCount} check-in{checkinsCount !== 1 ? "s" : ""}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Venue Check-ins — {sponsorName}</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-center justify-between mb-3 mt-1">
+          <span className="text-sm text-muted-foreground">{checkins.length} total visit{checkins.length !== 1 ? "s" : ""}</span>
+          <a
+            href={`${base}/api/sponsors/${sponsorId}/checkins/export`}
+            download
+            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+          >
+            <Download className="w-3.5 h-3.5" /> Export CSV
+          </a>
+        </div>
+        <div className="overflow-y-auto flex-1 space-y-1">
+          {loading ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">Loading…</div>
+          ) : checkins.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">No check-ins yet.</div>
+          ) : checkins.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2">
+              <UserCheck className="w-4 h-4 text-indigo-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">{c.participantName}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {c.participantPhone}
+                  {c.eventTitle && <span> · {c.eventTitle}</span>}
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground shrink-0">
+                {format(new Date(c.checkedInAt), "MMM d, h:mm a")}
+              </div>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function printVenueCard(sponsor: { name: string; type: string; description: string | null; discountCode: string | null }, checkInUrl: string) {
+  const w = window.open("", "_blank", "width=480,height=680");
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Venue Card — ${escapeHtml(sponsor.name)}</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { border: 2px solid #e5e7eb; border-radius: 20px; padding: 36px 32px; text-align: center; max-width: 380px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,.08); }
+  .icon { font-size: 48px; margin-bottom: 8px; }
+  h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; }
+  p { color: #6b7280; font-size: 14px; margin: 0 0 24px; }
+  #qr { margin: 0 auto 20px; display: flex; justify-content: center; }
+  .instruction { font-size: 13px; color: #374151; background: #f9fafb; border-radius: 10px; padding: 12px 16px; line-height: 1.7; }
+  .badge { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 8px; padding: 4px 12px; font-size: 13px; font-weight: 700; margin-top: 16px; letter-spacing: .08em; }
+</style>
+</head><body>
+<div class="card">
+  <div class="icon">${escapeHtml(SPONSOR_TYPE_ICONS[sponsor.type] ?? "🏢")}</div>
+  <h1>${escapeHtml(sponsor.name)}</h1>
+  ${sponsor.description ? `<p>${escapeHtml(sponsor.description)}</p>` : "<p>Our partner location</p>"}
+  <div id="qr"></div>
+  <div class="instruction">
+    📱 Scan this QR with your phone<br>
+    Enter your registered number to check in<br>
+    ${sponsor.discountCode ? "and unlock your discount code!" : "and record your visit!"}
+  </div>
+  ${sponsor.discountCode ? `<div class="badge">🎁 Discount unlocked on check-in</div>` : ""}
+</div>
+<script>
+(function() {
+  var qr = document.getElementById("qr");
+  var url = ${JSON.stringify(checkInUrl)};
+  var size = 200;
+  // Build QR using Google Charts API as a safe CDN-free fallback
+  var img = document.createElement("img");
+  img.src = "https://chart.googleapis.com/chart?cht=qr&chs=" + size + "x" + size + "&chl=" + encodeURIComponent(url) + "&choe=UTF-8";
+  img.width = size; img.height = size;
+  img.onload = function() { window.print(); };
+  img.onerror = function() { window.print(); };
+  qr.appendChild(img);
+})();
+</script>
+</body></html>`);
+  w.document.close();
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -296,6 +433,13 @@ export default function SponsorsPage() {
                       <Badge variant="outline" className="text-xs">{TYPE_LABELS[s.type] ?? s.type}</Badge>
                       {s.eventsCount > 0 && <Badge variant="secondary" className="text-xs">{s.eventsCount} event{s.eventsCount !== 1 ? "s" : ""}</Badge>}
                       {s.discountCode && <Badge className="text-xs font-mono bg-amber-100 text-amber-800 hover:bg-amber-100">{s.discountCode}</Badge>}
+                      {s.scanToken && (
+                        <CheckinsDialog
+                          sponsorId={s.id}
+                          sponsorName={s.name}
+                          checkinsCount={s.venueCheckinsCount ?? 0}
+                        />
+                      )}
                     </div>
                     <h3 className="font-semibold text-xl leading-snug">{s.name}</h3>
                     {s.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{s.description}</p>}
@@ -318,19 +462,36 @@ export default function SponsorsPage() {
                     </div>
                   </div>
                   <div className="flex items-start gap-2 shrink-0">
-                    {/* Tracked scan QR (scanToken) takes priority; fallback to discount code QR */}
+                    {s.scanToken && (
+                      <div className="flex flex-col items-center gap-1">
+                        {/* Venue check-in QR */}
+                        <div className="p-1.5 bg-white border-2 border-indigo-200 rounded-lg shadow-sm" title="Venue Check-in QR — print and place at your partner's location">
+                          <QRCodeSVG value={getSponsorCheckinUrl(s.scanToken)} size={56} />
+                        </div>
+                        <span className="text-[10px] text-indigo-600 font-medium">Check-in QR</span>
+                      </div>
+                    )}
                     {s.scanToken ? (
                       <div className="flex flex-col items-center gap-1">
+                        {/* Tracked link QR */}
                         <div className="p-1.5 bg-white border rounded-lg shadow-sm">
                           <QRCodeSVG value={getSponsorScanUrl(s.scanToken)} size={56} />
                         </div>
-                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                           <Scan className="w-2.5 h-2.5" />{s.qrScanCount ?? 0} scans
                         </span>
                       </div>
                     ) : s.discountCode ? (
                       <div className="p-1.5 bg-muted rounded-lg"><QRCodeSVG value={s.discountCode} size={56} /></div>
                     ) : null}
+                    {s.scanToken && (
+                      <Button
+                        variant="ghost" size="sm" className="h-8 w-8 p-0 text-indigo-600 hover:text-indigo-700" title="Print venue card"
+                        onClick={() => printVenueCard({ name: s.name, type: s.type, description: s.description ?? null, discountCode: s.discountCode ?? null }, getSponsorCheckinUrl(s.scanToken!))}
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                    )}
                     <a href={`/api/admin/sponsors/${s.id}/export`} download title="Export analytics CSV">
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><Download className="h-4 w-4" /></Button>
                     </a>
