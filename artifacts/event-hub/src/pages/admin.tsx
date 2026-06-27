@@ -125,7 +125,6 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
   const [form, setForm] = useState({
     title: event.title,
     description: event.description ?? "",
-    category: event.category,
     eventTypeId: String((event as { eventTypeId?: number | null }).eventTypeId ?? ""),
     date: event.date ? format(new Date(event.date), "yyyy-MM-dd'T'HH:mm") : "",
     location: event.location,
@@ -159,7 +158,6 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
       data: {
         title: form.title,
         description: form.description || undefined,
-        category: form.category as typeof EventInputCategory[keyof typeof EventInputCategory],
         eventTypeId: form.eventTypeId ? parseInt(form.eventTypeId) : undefined,
         date: new Date(form.date).toISOString(),
         location: form.location,
@@ -189,31 +187,17 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
               <Input className="mt-1" value={form.title} onChange={(e) => set("title", e.target.value)} />
             </div>
             <div>
-              <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => set("category", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Label>Event Type</Label>
+              <Select value={form.eventTypeId || "__none__"} onValueChange={(v) => set("eventTypeId", v === "__none__" ? "" : v)}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="— Not set —" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cycling">🚴 Cycling</SelectItem>
-                  <SelectItem value="hiking">🥾 Hiking</SelectItem>
-                  <SelectItem value="summer-night">🌙 Summer Night</SelectItem>
-                  <SelectItem value="walking">🚶 Walking</SelectItem>
+                  <SelectItem value="__none__">— Not set —</SelectItem>
+                  {(eventTypes ?? []).map((et) => (
+                    <SelectItem key={et.id} value={String(et.id)}>{et.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            {eventTypes && eventTypes.length > 0 && (
-              <div>
-                <Label>Event Type <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
-                <Select value={form.eventTypeId || "__none__"} onValueChange={(v) => set("eventTypeId", v === "__none__" ? "" : v)}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="— Not set —" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Not set —</SelectItem>
-                    {eventTypes.map((et) => (
-                      <SelectItem key={et.id} value={String(et.id)}>{et.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => set("status", v)}>
@@ -1044,42 +1028,29 @@ export default function Admin() {
                   </div>
 
                   {/* Share links */}
-                  <div className={`mt-4 pt-4 border-t grid gap-3 ${event.photoUrl ? "sm:grid-cols-2" : ""}`}>
-                    <div className="bg-muted/50 rounded-lg px-3 py-2">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                        <Link2 className="w-3 h-3" />
-                        <span className="font-medium uppercase tracking-wide">Registration link</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-foreground truncate flex-1">
-                          {getRegistrationLink(event.registrationToken)}
-                        </span>
-                        <CopyButton value={getRegistrationLink(event.registrationToken)} label="registration link" />
-                      </div>
+                  <div className="mt-4 pt-4 border-t flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 flex-1 min-w-0">
+                      <Link2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs text-muted-foreground font-medium shrink-0">Registration:</span>
+                      <span className="text-xs font-mono text-foreground truncate flex-1">
+                        r/{event.registrationToken.slice(0, 8)}…
+                      </span>
+                      <CopyButton value={getRegistrationLink(event.registrationToken)} label="registration link" />
                     </div>
                     {event.photoUrl && (
-                      <div className="bg-muted/50 rounded-lg px-3 py-2">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                          <ImageIcon className="w-3 h-3" />
-                          <span className="font-medium uppercase tracking-wide">Photo gallery</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={event.photoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-mono text-foreground truncate flex-1 hover:underline hover:text-primary transition-colors"
-                          >
-                            {event.photoUrl}
-                          </a>
-                          <CopyButton value={event.photoUrl} label="photo link" />
-                        </div>
+                      <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 flex-1 min-w-0">
+                        <ImageIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground font-medium shrink-0">Photos:</span>
+                        <a
+                          href={event.photoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary underline underline-offset-2 truncate flex-1"
+                        >
+                          View gallery ↗
+                        </a>
+                        <CopyButton value={event.photoUrl} label="photo link" />
                       </div>
-                    )}
-                    {!event.photoUrl && (
-                      <p className="text-xs text-muted-foreground italic self-center">
-                        No photo gallery URL set — add one via the edit (✏️) button.
-                      </p>
                     )}
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, sponsorsTable, eventSponsorsTable, sponsorImpressionsTable, eventsTable } from "@workspace/db";
+import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
@@ -14,6 +15,7 @@ const sponsorStatsSelect = {
   logoUrl: sponsorsTable.logoUrl,
   description: sponsorsTable.description,
   discountCode: sponsorsTable.discountCode,
+  scanToken: sponsorsTable.scanToken,
   createdAt: sponsorsTable.createdAt,
   pageViews: sql<number>`(
     SELECT COUNT(*) FROM sponsor_impressions si
@@ -61,7 +63,7 @@ router.post("/sponsors", async (req, res): Promise<void> => {
 
   const [sponsor] = await db
     .insert(sponsorsTable)
-    .values({ name, type, website: website ?? null, instagram: instagram ?? null, facebook: facebook ?? null, logoUrl: logoUrl ?? null, description: description ?? null, discountCode: discountCode ?? null })
+    .values({ name, type, website: website ?? null, instagram: instagram ?? null, facebook: facebook ?? null, logoUrl: logoUrl ?? null, description: description ?? null, discountCode: discountCode ?? null, scanToken: randomUUID() })
     .returning();
 
   res.status(201).json(sponsor);

@@ -60,7 +60,7 @@ export const ListEventsResponse = zod.array(ListEventsResponseItem)
 export const CreateEventBody = zod.object({
   "title": zod.string().min(1),
   "description": zod.string().optional(),
-  "category": zod.enum(['cycling', 'hiking', 'summer-night', 'walking']),
+  "category": zod.enum(['cycling', 'hiking', 'summer-night', 'walking']).optional(),
   "eventTypeId": zod.number().optional(),
   "date": zod.coerce.date(),
   "location": zod.string(),
@@ -248,6 +248,7 @@ export const ListEventSponsorsResponseItem = zod.object({
   "logoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "discountCode": zod.string().nullish(),
+  "scanToken": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 })
 export const ListEventSponsorsResponse = zod.array(ListEventSponsorsResponseItem)
@@ -439,6 +440,7 @@ export const ListSponsorsResponseItem = zod.object({
   "logoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "discountCode": zod.string().nullish(),
+  "scanToken": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "pageViews": zod.number(),
   "registrationsFromPage": zod.number(),
@@ -733,6 +735,7 @@ export const GetEventByTokenResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "description": zod.string().nullish(),
   "discountCode": zod.string().nullish(),
+  "scanToken": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 }))
 })

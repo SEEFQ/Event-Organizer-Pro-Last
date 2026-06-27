@@ -105,6 +105,13 @@ async function main() {
       ALTER TABLE event_financials ADD COLUMN IF NOT EXISTS discount_entries JSONB NOT NULL DEFAULT '[]'::jsonb;
     `);
 
+    // ── Step 1c: Add scan_token to sponsors; allow NULL eventId in impressions ─
+    await client.query(`
+      ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS scan_token TEXT UNIQUE;
+      UPDATE sponsors SET scan_token = gen_random_uuid()::text WHERE scan_token IS NULL;
+      ALTER TABLE sponsor_impressions ALTER COLUMN event_id DROP NOT NULL;
+    `);
+
     // ── Step 2: Upgrade completed_events.event_date TEXT → DATE ──────────────
     await client.query(`
       DO $$ BEGIN

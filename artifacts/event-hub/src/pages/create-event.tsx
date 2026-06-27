@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { useCreateEvent, useListEventTypes, EventInputCategory, EventInputDifficulty } from "@workspace/api-client-react";
+import { useCreateEvent, useListEventTypes, EventInputDifficulty } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,6 @@ import { Link } from "wouter";
 const eventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().optional(),
-  category: z.nativeEnum(EventInputCategory),
   eventTypeId: z.coerce.number().optional(),
   date: z.string().min(1, "Date is required"),
   location: z.string().min(3, "Location is required"),
@@ -52,7 +51,6 @@ export default function CreateEvent() {
     defaultValues: {
       title: "",
       description: "",
-      category: EventInputCategory.hiking,
       eventTypeId: undefined,
       date: "",
       location: "",
@@ -115,56 +113,30 @@ export default function CreateEvent() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="category"
+                    name="eventTypeId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Category *</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormLabel>Event Type *</FormLabel>
+                        <Select
+                          onValueChange={(v) => field.onChange(v === "__none__" ? undefined : parseInt(v))}
+                          value={field.value ? String(field.value) : "__none__"}
+                        >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select category" />
+                              <SelectValue placeholder="Select event type" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value={EventInputCategory.cycling}>🚴 Cycling</SelectItem>
-                            <SelectItem value={EventInputCategory.hiking}>🥾 Hiking</SelectItem>
-                            <SelectItem value={EventInputCategory['summer-night']}>🌙 Summer Night</SelectItem>
-                            <SelectItem value={EventInputCategory.walking}>🚶 Walking</SelectItem>
+                            <SelectItem value="__none__">— Select type —</SelectItem>
+                            {(eventTypes ?? []).map((et) => (
+                              <SelectItem key={et.id} value={String(et.id)}>{et.name}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
-                  {eventTypes && eventTypes.length > 0 && (
-                    <FormField
-                      control={form.control}
-                      name="eventTypeId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Event Type <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
-                          <Select
-                            onValueChange={(v) => field.onChange(v === "__none__" ? undefined : parseInt(v))}
-                            value={field.value ? String(field.value) : "__none__"}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="— Not set —" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="__none__">— Not set —</SelectItem>
-                              {eventTypes.map((et) => (
-                                <SelectItem key={et.id} value={String(et.id)}>{et.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
 
                   <FormField
                     control={form.control}

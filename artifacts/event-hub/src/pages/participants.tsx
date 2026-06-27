@@ -6,6 +6,7 @@ import {
   useAdminCreateParticipant,
   useAdminChangeParticipantPhone,
   useAdminAddParticipantToEvent,
+  useAdminUpdateParticipant,
   useListEvents,
   getAdminListParticipantsQueryKey,
   getAdminGetParticipantQueryKey,
@@ -26,8 +27,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Trophy, Star, Users, Share2, Loader2, Search, Plus,
-  Phone, Mail, Calendar, ChevronDown, ChevronUp, UserCircle, Download, FileUp, Printer,
+  Trophy, Star, Users, Loader2, Search, Plus,
+  Phone, Mail, Calendar, UserCircle, Download, FileUp, Printer, Pencil,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -38,22 +39,109 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
+// ─── Badge Printing ───────────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function printBadges(participants: Participant[]) {
+  const badgeHtml = participants.map((p) => `
+    <div class="badge">
+      <div class="photo-placeholder">
+        <svg width="90" height="110" viewBox="0 0 90 110" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="45" cy="55" rx="43" ry="53" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="6,3"/>
+          <text x="45" y="52" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="sans-serif">PHOTO</text>
+          <text x="45" y="65" text-anchor="middle" font-size="8" fill="#d1d5db" font-family="sans-serif">paste here</text>
+        </svg>
+      </div>
+      <div class="name">${escapeHtml(p.name)}</div>
+      ${p.phone ? `<div class="field"><span class="label">📞</span> ${escapeHtml(p.phone)}</div>` : ""}
+      ${p.email ? `<div class="field email"><span class="label">✉</span> ${escapeHtml(p.email)}</div>` : ""}
+      <div class="stats">
+        <div class="stat"><div class="stat-val">${p.totalEvents}</div><div class="stat-lbl">Events</div></div>
+        <div class="stat"><div class="stat-val">${p.totalPoints}</div><div class="stat-lbl">Points</div></div>
+        <div class="stat"><div class="stat-val">___</div><div class="stat-lbl">km Total</div></div>
+      </div>
+    </div>`).join("");
+
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><title>Participant Badges</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Arial', sans-serif; background: #fff; padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 200px); gap: 16px; justify-content: center; }
+    .badge {
+      width: 200px; border: 1.5px solid #374151; border-radius: 12px;
+      padding: 14px 12px 10px; page-break-inside: avoid; text-align: center;
+      background: #fff;
+    }
+    .photo-placeholder { display: flex; justify-content: center; margin-bottom: 10px; }
+    .name { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 5px; line-height: 1.2; }
+    .field { font-size: 10px; color: #6b7280; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .email { font-size: 9px; }
+    .label { opacity: 0.7; }
+    .stats { display: flex; justify-content: space-around; border-top: 1px solid #e5e7eb; margin-top: 8px; padding-top: 8px; }
+    .stat-val { font-size: 16px; font-weight: 700; color: #1f2937; }
+    .stat-lbl { font-size: 8px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+    @media print {
+      body { padding: 8px; }
+      .grid { gap: 10px; }
+    }
+  </style></head><body>
+  <div class="grid">${badgeHtml}</div>
+  <script>window.onload=function(){window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+// ─── CSV Import ───────────────────────────────────────────────────────────────
+
+function parseCSV(text: string): Array<{ name?: string; email?: string; phone?: string }> {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z]/g, ""));
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = cols[i] ?? ""; });
+    return {
+      name: row["name"] || row["fullname"] || row["participantname"],
+      email: row["email"] || row["emailaddress"],
+      phone: row["phone"] || row["phonenumber"] || row["mobile"],
+    };
+  }).filter((r) => r.name || r.email);
+}
+
 // ─── Participant Profile Panel ────────────────────────────────────────────────
 
 function ParticipantProfile({ participant: baseParticipant, onClose }: { participant: Participant; onClose: () => void }) {
   const phone = baseParticipant.phone ?? null;
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
   const [addToEventOpen, setAddToEventOpen] = useState(false);
   const [changePhoneOpen, setChangePhoneOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [newPhone, setNewPhone] = useState("");
   const [selectedEventId, setSelectedEventId] = useState("");
   const [addStatus, setAddStatus] = useState("confirmed");
+  const [editForm, setEditForm] = useState({
+    name: baseParticipant.name,
+    email: baseParticipant.email,
+    emergencyContactName: baseParticipant.emergencyContactName ?? "",
+    emergencyContactPhone: baseParticipant.emergencyContactPhone ?? "",
+  });
 
   const { data, isLoading } = useAdminGetParticipant(encodeURIComponent(phone ?? ""), {
     query: { enabled: !!phone },
   });
   const { data: events } = useListEvents();
+
+  // Refresh edit form when data loads
+  const participant = data?.participant ?? baseParticipant;
+  const registrations = data?.registrations ?? [];
 
   const changePhoneMutation = useAdminChangeParticipantPhone({
     mutation: {
@@ -71,13 +159,28 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
     },
   });
 
+  const updateMutation = useAdminUpdateParticipant({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Participant updated" });
+        setEditOpen(false);
+        queryClient.invalidateQueries({ queryKey: getAdminListParticipantsQueryKey() });
+        if (phone) queryClient.invalidateQueries({ queryKey: getAdminGetParticipantQueryKey(encodeURIComponent(phone)) });
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      },
+    },
+  });
+
   const addToEventMutation = useAdminAddParticipantToEvent({
     mutation: {
       onSuccess: () => {
         toast({ title: "Participant added to event" });
         setAddToEventOpen(false);
         setSelectedEventId("");
-        queryClient.invalidateQueries({ queryKey: getAdminGetParticipantQueryKey(encodeURIComponent(phone)) });
+        if (phone) queryClient.invalidateQueries({ queryKey: getAdminGetParticipantQueryKey(encodeURIComponent(phone)) });
       },
       onError: (err: unknown) => {
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed";
@@ -90,41 +193,9 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
     return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   }
 
-  // Use detailed data if available, fall back to base participant for phoneless records
-  const participant = data?.participant ?? baseParticipant;
-  const registrations = data?.registrations ?? [];
-
-  if (!phone && !data) {
-    // Show basic info + set phone form for phoneless participants
-    return (
-      <div className="space-y-4">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          ⚠️ This participant has no phone number. Set one below to unlock full profile features.
-        </div>
-        <div className="text-sm space-y-1">
-          <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{participant.name}</span></div>
-          <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{participant.email}</span></div>
-        </div>
-        <div>
-          <Label>Assign Phone Number</Label>
-          <Input className="mt-1" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+962 7X XXX XXXX" />
-        </div>
-        <Button
-          disabled={!newPhone.trim() || changePhoneMutation.isPending}
-          onClick={() => {
-            // Use the participant's email as a stand-in; API needs phone but let the admin know
-            toast({ title: "Cannot set phone without existing phone", description: "Contact the API admin to set an initial phone for phoneless participants.", variant: "destructive" });
-          }}
-        >
-          Save Phone
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
-      {/* Summary */}
+      {/* Summary stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-muted/40 rounded-xl p-3 text-center">
           <div className="text-xs text-muted-foreground mb-0.5">Points</div>
@@ -144,18 +215,14 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
       <div className="space-y-2 text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Phone className="w-3.5 h-3.5 shrink-0" />
-          <span>{participant.phone ?? "No phone"}</span>
-          <Button
-            variant="ghost" size="sm"
-            className="h-6 px-2 text-xs ml-auto"
-            onClick={() => setChangePhoneOpen(true)}
-          >
+          <span className="flex-1">{participant.phone ?? "No phone"}</span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setChangePhoneOpen(true)}>
             Change
           </Button>
         </div>
         <div className="flex items-center gap-2 text-muted-foreground">
           <Mail className="w-3.5 h-3.5 shrink-0" />
-          <span>{participant.email}</span>
+          <span className="flex-1 truncate">{participant.email}</span>
         </div>
         {participant.emergencyContactName && (
           <div className="text-xs text-muted-foreground">
@@ -172,6 +239,17 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
 
       {/* Actions */}
       <div className="flex gap-2">
+        <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={() => {
+          setEditForm({
+            name: participant.name,
+            email: participant.email,
+            emergencyContactName: participant.emergencyContactName ?? "",
+            emergencyContactPhone: participant.emergencyContactPhone ?? "",
+          });
+          setEditOpen(true);
+        }}>
+          <Pencil className="w-3.5 h-3.5" /> Edit Details
+        </Button>
         <Button size="sm" className="flex-1" onClick={() => setAddToEventOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Add to Event
         </Button>
@@ -201,6 +279,59 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
           </div>
         )}
       </div>
+
+      {/* Edit Details Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Edit Participant</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-xs text-muted-foreground">Phone number is the unique identifier and cannot be changed here — use "Change Phone" instead.</p>
+            <div>
+              <Label>Full Name</Label>
+              <Input className="mt-1" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} placeholder="Full name" />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input className="mt-1" type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@example.com" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Emergency Name</Label>
+                <Input className="mt-1" value={editForm.emergencyContactName} onChange={(e) => setEditForm((f) => ({ ...f, emergencyContactName: e.target.value }))} placeholder="Name" />
+              </div>
+              <div>
+                <Label>Emergency Phone</Label>
+                <Input className="mt-1" value={editForm.emergencyContactPhone} onChange={(e) => setEditForm((f) => ({ ...f, emergencyContactPhone: e.target.value }))} placeholder="+962..." />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                disabled={!editForm.name.trim() || !editForm.email.trim() || updateMutation.isPending}
+                onClick={() => {
+                  if (!participant.phone) {
+                    toast({ title: "No phone set for this participant", variant: "destructive" });
+                    return;
+                  }
+                  updateMutation.mutate({
+                    phone: encodeURIComponent(participant.phone),
+                    data: {
+                      name: editForm.name,
+                      email: editForm.email,
+                      emergencyContactName: editForm.emergencyContactName || undefined,
+                      emergencyContactPhone: editForm.emergencyContactPhone || undefined,
+                    },
+                  });
+                }}
+              >
+                {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Save Changes
+              </Button>
+              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add to event dialog */}
       <Dialog open={addToEventOpen} onOpenChange={setAddToEventOpen}>
@@ -260,7 +391,9 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Change Phone Number</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">Current: <span className="font-medium text-foreground">{participant.phone ?? "none"}</span></p>
+            <p className="text-sm text-muted-foreground">
+              Current: <span className="font-medium text-foreground">{participant.phone ?? "none"}</span>
+            </p>
             <div>
               <Label>New Phone Number</Label>
               <Input className="mt-1" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+962 7X XXX XXXX" />
@@ -290,54 +423,6 @@ function ParticipantProfile({ participant: baseParticipant, onClose }: { partici
 }
 
 // ─── Main Admin Participants Page ─────────────────────────────────────────────
-
-// ─── Badge Printing ───────────────────────────────────────────────────────────
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-function printBadges(participants: Participant[]) {
-  const rows = participants.map((p) => `
-    <div class="badge">
-      <div class="name">${escapeHtml(p.name)}</div>
-      ${p.phone ? `<div class="detail">📞 ${escapeHtml(p.phone)}</div>` : ""}
-      ${p.email ? `<div class="detail">✉ ${escapeHtml(p.email)}</div>` : ""}
-      <div class="detail">Events: ${p.totalEvents} · Points: ${p.totalPoints}</div>
-    </div>`).join("");
-
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(`<!DOCTYPE html><html><head><title>Participant Badges</title>
-  <style>
-    body { font-family: sans-serif; margin: 0; padding: 16px; }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .badge { border: 2px solid #333; border-radius: 8px; padding: 12px 16px; page-break-inside: avoid; }
-    .name { font-size: 18px; font-weight: bold; margin-bottom: 6px; }
-    .detail { font-size: 12px; color: #555; margin-top: 3px; }
-    @media print { body { padding: 0; } }
-  </style></head><body>
-  <div class="grid">${rows}</div>
-  <script>window.onload=function(){window.print();}<\/script>
-  </body></html>`);
-  win.document.close();
-}
-
-// ─── CSV Import ───────────────────────────────────────────────────────────────
-
-function parseCSV(text: string): Array<{ name?: string; email?: string; phone?: string }> {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z]/g, ""));
-  return lines.slice(1).map((line) => {
-    const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = cols[i] ?? ""; });
-    return { name: row["name"] || row["fullname"] || row["participantname"], email: row["email"] || row["emailaddress"], phone: row["phone"] || row["phonenumber"] || row["mobile"] };
-  }).filter((r) => r.name || r.email);
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ParticipantsPage() {
   const { toast } = useToast();
@@ -410,14 +495,15 @@ export default function ParticipantsPage() {
             >
               <FileUp className="w-4 h-4" /> Import CSV
             </Button>
-            {participants.length > 0 && (
+            {/* Print Badges — only available during a search so you know exactly who to print */}
+            {isSearching && participants.length > 0 && (
               <Button
                 variant="outline"
                 size="lg"
                 className="gap-2"
                 onClick={() => printBadges(participants)}
               >
-                <Printer className="w-4 h-4" /> Print Badges
+                <Printer className="w-4 h-4" /> Print {participants.length} Badge{participants.length !== 1 ? "s" : ""}
               </Button>
             )}
             <Button size="lg" className="gap-2" onClick={() => setCreateOpen(true)}>
@@ -453,7 +539,7 @@ export default function ParticipantsPage() {
         )}
 
         {/* Search */}
-        <div className="relative mb-6 max-w-md">
+        <div className="relative mb-2 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             value={searchQuery}
@@ -462,6 +548,16 @@ export default function ParticipantsPage() {
             className="pl-9"
           />
         </div>
+        {!isSearching && (
+          <p className="text-xs text-muted-foreground mb-6">
+            Tip: search for participants first, then use <strong>Print Badges</strong> to print only those results.
+          </p>
+        )}
+        {isSearching && participants.length > 0 && (
+          <p className="text-xs text-muted-foreground mb-6">
+            {participants.length} result{participants.length !== 1 ? "s" : ""} — you can now print badges for these participants.
+          </p>
+        )}
 
         {/* Table */}
         {isLoading ? (
@@ -671,7 +767,7 @@ export default function ParticipantsPage() {
               <Input className="mt-1" type="email" value={createForm.email} onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))} placeholder="email@example.com" />
             </div>
             <div>
-              <Label>Phone <span className="text-muted-foreground">(optional)</span></Label>
+              <Label>Phone <span className="text-muted-foreground text-xs">(unique identifier)</span></Label>
               <Input className="mt-1" type="tel" value={createForm.phone} onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+962 7X XXX XXXX" />
             </div>
             <div className="grid grid-cols-2 gap-3">

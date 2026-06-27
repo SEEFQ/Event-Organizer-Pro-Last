@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { format } from "date-fns";
 import {
   Calendar, MapPin, Users, Clock, Mountain, Ruler,
@@ -21,13 +24,6 @@ import {
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-
-const CATEGORY_LABELS: Record<string, string> = {
-  cycling: "Cycling",
-  hiking: "Hiking",
-  "summer-night": "Summer Night",
-  walking: "Walking",
-};
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   easy: "bg-green-100 text-green-800",
@@ -93,8 +89,6 @@ function MediaBannerCarousel() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const active = banners?.filter((b) => b.isActive) ?? [];
-
-  // Clamp current index if list shrinks after data refresh
   const safeIdx = active.length > 0 ? Math.min(current, active.length - 1) : 0;
   if (safeIdx !== current && active.length > 0) setCurrent(safeIdx);
 
@@ -107,7 +101,6 @@ function MediaBannerCarousel() {
   }, [active.length]);
 
   if (!active || active.length === 0) return null;
-
   const banner = active[safeIdx];
   if (!banner) return null;
 
@@ -123,50 +116,27 @@ function MediaBannerCarousel() {
   return (
     <div className="relative w-full overflow-hidden rounded-2xl mb-8 bg-black" style={{ aspectRatio: "16/6" }}>
       {banner.type === "video" ? (
-        <video
-          key={banner.url}
-          src={banner.url}
-          autoPlay
-          muted
-          loop
-          playsInline
-          className="w-full h-full object-cover"
-        />
+        <video key={banner.url} src={banner.url} autoPlay muted loop playsInline className="w-full h-full object-cover" />
       ) : (
-        <img
-          src={banner.url}
-          alt={banner.title ?? "Event banner"}
-          className="w-full h-full object-cover transition-opacity duration-500"
-        />
+        <img src={banner.url} alt={banner.title ?? "Event banner"} className="w-full h-full object-cover transition-opacity duration-500" />
       )}
-
       {banner.title && (
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
           <p className="text-white text-sm font-medium">{banner.title}</p>
         </div>
       )}
-
       {active.length > 1 && (
         <>
-          <button
-            onClick={prev}
-            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors"
-          >
+          <button onClick={prev} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button
-            onClick={next}
-            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors"
-          >
+          <button onClick={next} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full p-1.5 transition-colors">
             <ChevronRight className="w-4 h-4" />
           </button>
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
             {active.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => { if (timerRef.current) clearInterval(timerRef.current); setCurrent(i); }}
-                className={`w-1.5 h-1.5 rounded-full transition-colors ${i === current ? "bg-white" : "bg-white/40"}`}
-              />
+              <button key={i} onClick={() => { if (timerRef.current) clearInterval(timerRef.current); setCurrent(i); }}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${i === current ? "bg-white" : "bg-white/40"}`} />
             ))}
           </div>
         </>
@@ -179,9 +149,7 @@ function MediaBannerCarousel() {
 
 function PastEventsSection() {
   const { data: completed } = useListCompletedEvents({ visibleOnly: true });
-
   if (!completed || completed.length === 0) return null;
-
   return (
     <div className="mt-12 pt-8 border-t">
       <h2 className="text-xl font-bold mb-6">Previous Events</h2>
@@ -199,9 +167,7 @@ function PastEventsSection() {
               <div className="flex items-center gap-2 mb-1.5">
                 <Badge variant="secondary" className="text-xs">{ev.eventType}</Badge>
                 {ev.eventDate && (
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(ev.eventDate), "MMM d, yyyy")}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{format(new Date(ev.eventDate), "MMM d, yyyy")}</span>
                 )}
               </div>
               <h3 className="font-semibold text-sm leading-snug mb-1">{ev.title}</h3>
@@ -212,6 +178,13 @@ function PastEventsSection() {
       </div>
     </div>
   );
+}
+
+// ─── Sponsor QR helper ────────────────────────────────────────────────────────
+
+function getSponsorScanUrl(scanToken: string) {
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  return `${window.location.origin}${base}/api/public/sponsor-scan/${encodeURIComponent(scanToken)}`;
 }
 
 // ─── Main Registration Page ───────────────────────────────────────────────────
@@ -246,7 +219,7 @@ export default function RegisterPage() {
     query: { enabled: !!token, queryKey: getGetEventByTokenQueryKey(token!) },
   });
 
-  // Track page view once per session (fires after event data loads)
+  // Track page view once per session
   useEffect(() => {
     if (!token || !data?.event) return;
     const key = `view_tracked_${token}`;
@@ -255,6 +228,18 @@ export default function RegisterPage() {
     const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
     fetch(`${base}/api/public/register/${encodeURIComponent(token)}/track-view`, { method: "POST" }).catch(() => {});
   }, [token, data?.event?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Form validity — all required fields must be filled
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const isPhoneValid = phone.trim().length >= 6;
+  const isFormValid =
+    name.trim().length >= 2 &&
+    isEmailValid &&
+    isPhoneValid &&
+    (nationality === "jordanian" || (nationality === "other" && nationalityOther.trim().length > 0)) &&
+    emergencyContactName.trim().length >= 2 &&
+    emergencyContactPhone.trim().length >= 6 &&
+    waiverAccepted;
 
   const registerMutation = useRegisterForEvent({
     mutation: {
@@ -280,26 +265,22 @@ export default function RegisterPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) return;
-    if (!waiverAccepted) {
-      toast({ title: "Please accept the waiver", description: "You must accept the waiver to register.", variant: "destructive" });
-      return;
-    }
+    if (!isFormValid) return;
     registerMutation.mutate({
       token: token!,
       data: {
         name,
         fullNameAr: fullNameAr || undefined,
         email,
-        phone: phone || undefined,
+        phone: phoneCountryCode + phone.trim(),
         phoneCountryCode,
         nationality: nationality || undefined,
         nationalityOther: nationalityOther || undefined,
         hasMedicalConditions,
         medicalDetails: hasMedicalConditions ? medicalDetails || undefined : undefined,
-        emergencyContactName: emergencyContactName || undefined,
-        emergencyContactPhone: emergencyContactPhone || undefined,
-        waiverAcceptedAt: waiverAccepted ? new Date().toISOString() : undefined,
+        emergencyContactName,
+        emergencyContactPhone,
+        waiverAcceptedAt: new Date().toISOString(),
         refToken,
       },
     });
@@ -339,17 +320,13 @@ export default function RegisterPage() {
             <CheckCircle2 className="w-10 h-10 text-primary" />
           </div>
           <h1 className="text-3xl font-bold mb-3">
-            {registrationStatus === "pending"
-              ? "Registration received!"
-              : registrationStatus === "waitlist"
-              ? "You're on the waitlist!"
-              : "You're registered!"}
+            {registrationStatus === "pending" ? "Registration received!" : registrationStatus === "waitlist" ? "You're on the waitlist!" : "You're registered!"}
           </h1>
           <p className="text-muted-foreground mb-4">
             {registrationStatus === "pending"
-              ? "Your registration is pending organizer approval. You'll hear back once it's confirmed."
+              ? "Your registration is pending organizer approval."
               : registrationStatus === "waitlist"
-              ? "The event is currently full, but you've been added to the waitlist. We'll contact you if a spot opens up."
+              ? "The event is full, but you're on the waitlist."
               : `Your spot is confirmed for ${event.title}. See you there!`}
           </p>
 
@@ -357,25 +334,17 @@ export default function RegisterPage() {
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-center gap-2 text-sm">
               <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
               <span>
-                You earned{" "}
-                <span className="font-bold text-amber-700">{earnedPoints} loyalty point{earnedPoints !== 1 ? "s" : ""}</span>
+                You earned <span className="font-bold text-amber-700">{earnedPoints} loyalty point{earnedPoints !== 1 ? "s" : ""}</span>
                 {refToken && <span className="text-amber-600"> (includes +1 referral bonus!)</span>}
               </span>
             </div>
           )}
 
           {registrationStatus === "confirmed" && event.photoUrl && (
-            <a
-              href={event.photoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block bg-blue-50 border border-blue-200 hover:border-blue-400 rounded-xl p-4 mb-2 text-sm text-left transition-colors group"
-            >
-              <div className="flex items-center gap-2 font-semibold mb-1 text-blue-800">
-                <ImageIcon className="w-4 h-4" />
-                Event Photo Gallery
-              </div>
-              <p className="text-blue-600 text-xs group-hover:underline truncate">{event.photoUrl}</p>
+            <a href={event.photoUrl} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-3 bg-blue-50 border border-blue-200 hover:border-blue-400 rounded-xl p-4 mb-2 text-sm transition-colors group">
+              <ImageIcon className="w-5 h-5 text-blue-600 shrink-0" />
+              <span className="text-blue-700 font-medium group-hover:underline">View Event Photos ↗</span>
             </a>
           )}
 
@@ -386,7 +355,7 @@ export default function RegisterPage() {
                 Want to invite friends?
               </div>
               <p className="text-muted-foreground text-xs">
-                Ask the organizer for your personal referral link. When friends register through it, you both earn bonus points!
+                Ask the organizer for your personal referral link to earn bonus points!
               </p>
             </div>
           )}
@@ -398,12 +367,8 @@ export default function RegisterPage() {
             </div>
             <div className="flex gap-2 items-start text-muted-foreground">
               <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
-              <a
-                href={mapsUrl(event.meetingPoint ?? event.location)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-primary underline underline-offset-2"
-              >
+              <a href={mapsUrl(event.meetingPoint ?? event.location)} target="_blank" rel="noopener noreferrer"
+                className="hover:text-primary underline underline-offset-2">
                 {event.meetingPoint ?? event.location}
               </a>
             </div>
@@ -413,34 +378,34 @@ export default function RegisterPage() {
     );
   }
 
-  if (alreadyRegistered) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="max-w-md w-full text-center">
-          <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="w-10 h-10 text-green-500" />
-          </div>
-          <h1 className="text-3xl font-bold mb-3">Already Registered!</h1>
-          <p className="text-muted-foreground mb-6">
-            You're already signed up for <strong>{event.title}</strong>. Check your email for confirmation details, or contact the organiser if you have questions.
-          </p>
-          <div className="bg-muted/50 rounded-xl p-4 text-left space-y-3 text-sm">
-            <div className="flex gap-2 items-center text-muted-foreground">
-              <Calendar className="w-4 h-4 shrink-0" />
-              {format(new Date(event.date), "EEEE, MMMM d, yyyy 'at' h:mm a")}
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Already-registered popup */}
+      <Dialog open={alreadyRegistered} onOpenChange={(o) => { if (!o) setAlreadyRegistered(false); }}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
+              <CheckCircle2 className="w-8 h-8 text-green-500" />
             </div>
-            <div className="flex gap-2 items-start text-muted-foreground">
-              <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
+            <DialogTitle>Already Registered!</DialogTitle>
+            <DialogDescription>
+              You're already signed up for <strong>{event.title}</strong>. Contact the organiser if you have questions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-1.5 mt-2">
+            <div className="flex items-center justify-center gap-2">
+              <Calendar className="w-4 h-4 shrink-0" />
+              {format(new Date(event.date), "EEE, MMM d 'at' h:mm a")}
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <MapPin className="w-4 h-4 shrink-0" />
               {event.meetingPoint ?? event.location}
             </div>
           </div>
-        </div>
-      </div>
-    );
-  }
+          <Button className="w-full mt-4" onClick={() => setAlreadyRegistered(false)}>Close</Button>
+        </DialogContent>
+      </Dialog>
 
-  return (
-    <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 py-12">
 
         {/* Media Banner Carousel */}
@@ -449,14 +414,13 @@ export default function RegisterPage() {
         {refToken && (
           <div className="bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 flex items-center gap-3 mb-6 text-sm">
             <Share2 className="w-4 h-4 text-primary shrink-0" />
-            <span>You were invited by a friend! Register to earn <strong>+1 bonus loyalty point</strong> on top of the event points.</span>
+            <span>You were invited by a friend! Register to earn <strong>+1 bonus loyalty point</strong>.</span>
           </div>
         )}
 
         {/* Event Info */}
         <div className="mb-8">
           <div className="flex flex-wrap gap-2 mb-4">
-            <Badge variant="secondary">{CATEGORY_LABELS[event.category] ?? event.category}</Badge>
             {event.difficulty && (
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${DIFFICULTY_COLORS[event.difficulty] ?? ""}`}>
                 {event.difficulty}
@@ -487,34 +451,22 @@ export default function RegisterPage() {
                 <div className="text-sm font-medium">{format(new Date(event.date), "EEE, MMM d 'at' h:mm a")}</div>
               </div>
             </div>
-            <a
-              href={mapsUrl(event.location)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-start gap-3 bg-muted/40 rounded-lg p-3 hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-colors group"
-            >
+            <a href={mapsUrl(event.location)} target="_blank" rel="noopener noreferrer"
+              className="flex items-start gap-3 bg-muted/40 rounded-lg p-3 hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-colors group">
               <MapPin className="w-4 h-4 text-primary mt-0.5 shrink-0" />
               <div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Location</div>
-                <div className="text-sm font-medium group-hover:text-primary transition-colors underline underline-offset-2 decoration-dotted">
-                  {event.location}
-                </div>
+                <div className="text-sm font-medium group-hover:text-primary transition-colors underline underline-offset-2 decoration-dotted">{event.location}</div>
                 <div className="text-xs text-muted-foreground mt-0.5">Open in Google Maps ↗</div>
               </div>
             </a>
             {event.meetingPoint && (
-              <a
-                href={mapsUrl(event.meetingPoint)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-start gap-3 bg-muted/40 rounded-lg p-3 hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-colors group"
-              >
+              <a href={mapsUrl(event.meetingPoint)} target="_blank" rel="noopener noreferrer"
+                className="flex items-start gap-3 bg-muted/40 rounded-lg p-3 hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-colors group">
                 <Clock className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                 <div>
                   <div className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Meeting Point</div>
-                  <div className="text-sm font-medium group-hover:text-primary transition-colors underline underline-offset-2 decoration-dotted">
-                    {event.meetingPoint}
-                  </div>
+                  <div className="text-sm font-medium group-hover:text-primary transition-colors underline underline-offset-2 decoration-dotted">{event.meetingPoint}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">Open in Google Maps ↗</div>
                 </div>
               </a>
@@ -523,9 +475,7 @@ export default function RegisterPage() {
               <Users className="w-4 h-4 text-primary mt-0.5 shrink-0" />
               <div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Spots</div>
-                <div className="text-sm font-medium">
-                  {isFull ? "Full — waitlist open" : `${spotsLeft} of ${event.capacity} remaining`}
-                </div>
+                <div className="text-sm font-medium">{isFull ? "Full — waitlist open" : `${spotsLeft} of ${event.capacity} remaining`}</div>
               </div>
             </div>
             {event.distance && (
@@ -573,7 +523,7 @@ export default function RegisterPage() {
               </h2>
               <p className="text-muted-foreground text-sm mb-6">
                 {isFull
-                  ? "The event is full, but leave your details and we'll contact you if a spot opens up."
+                  ? "The event is full, but leave your details and we'll contact you if a spot opens."
                   : `Secure your spot and earn ${pts}${refToken ? "+1 bonus" : ""} loyalty point${pts !== 1 || refToken ? "s" : ""} 🎉`}
               </p>
 
@@ -618,14 +568,17 @@ export default function RegisterPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="mt-1"
+                    className={`mt-1 ${email && !isEmailValid ? "border-destructive" : ""}`}
                   />
+                  {email && !isEmailValid && (
+                    <p className="text-xs text-destructive mt-1">Please enter a valid email address.</p>
+                  )}
                 </div>
 
-                {/* Phone with country code */}
+                {/* Phone — required */}
                 <div>
                   <Label htmlFor="phone">
-                    Phone number <span className="text-muted-foreground text-xs">(optional)</span>
+                    Phone number <span className="text-destructive">*</span>
                   </Label>
                   <div className="flex gap-2 mt-1">
                     <select
@@ -634,9 +587,7 @@ export default function RegisterPage() {
                       className="h-9 rounded-md border border-input bg-background px-2 text-sm shrink-0 w-32"
                     >
                       {COUNTRY_CODES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.flag} {c.code}
-                        </option>
+                        <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
                       ))}
                     </select>
                     <Input
@@ -646,14 +597,18 @@ export default function RegisterPage() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="7X XXX XXXX"
+                      required
                       className="flex-1"
                     />
                   </div>
+                  {phone && !isPhoneValid && (
+                    <p className="text-xs text-destructive mt-1">Please enter a valid phone number.</p>
+                  )}
                 </div>
 
-                {/* Nationality */}
+                {/* Nationality — required */}
                 <div>
-                  <Label>Nationality <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label>Nationality <span className="text-destructive">*</span></Label>
                   <div className="flex gap-4 mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -682,9 +637,13 @@ export default function RegisterPage() {
                     <Input
                       value={nationalityOther}
                       onChange={(e) => setNationalityOther(e.target.value)}
-                      placeholder="Please specify"
+                      placeholder="Please specify your nationality"
+                      required
                       className="mt-2"
                     />
+                  )}
+                  {nationality === "" && (
+                    <p className="text-xs text-muted-foreground mt-1">Please select your nationality to continue.</p>
                   )}
                 </div>
 
@@ -693,23 +652,11 @@ export default function RegisterPage() {
                   <Label>Medical conditions <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <div className="flex gap-4 mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="medical"
-                        checked={!hasMedicalConditions}
-                        onChange={() => setHasMedicalConditions(false)}
-                        className="accent-primary"
-                      />
+                      <input type="radio" name="medical" checked={!hasMedicalConditions} onChange={() => setHasMedicalConditions(false)} className="accent-primary" />
                       <span className="text-sm">No</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="medical"
-                        checked={hasMedicalConditions}
-                        onChange={() => setHasMedicalConditions(true)}
-                        className="accent-primary"
-                      />
+                      <input type="radio" name="medical" checked={hasMedicalConditions} onChange={() => setHasMedicalConditions(true)} className="accent-primary" />
                       <span className="text-sm">Yes</span>
                     </label>
                   </div>
@@ -723,23 +670,24 @@ export default function RegisterPage() {
                   )}
                 </div>
 
-                {/* Emergency Contact */}
+                {/* Emergency Contact — required */}
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="emergencyName">
-                      Emergency contact name <span className="text-muted-foreground text-xs">(optional)</span>
+                      Emergency contact name <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="emergencyName"
                       value={emergencyContactName}
                       onChange={(e) => setEmergencyContactName(e.target.value)}
                       placeholder="Full name"
+                      required
                       className="mt-1"
                     />
                   </div>
                   <div>
                     <Label htmlFor="emergencyPhone">
-                      Emergency contact phone <span className="text-muted-foreground text-xs">(optional)</span>
+                      Emergency contact phone <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="emergencyPhone"
@@ -747,6 +695,7 @@ export default function RegisterPage() {
                       value={emergencyContactPhone}
                       onChange={(e) => setEmergencyContactPhone(e.target.value)}
                       placeholder="+962 7X XXX XXXX"
+                      required
                       className="mt-1"
                     />
                   </div>
@@ -763,18 +712,24 @@ export default function RegisterPage() {
                     />
                     <span className="text-sm">
                       I acknowledge that outdoor activities involve inherent risks and I accept full responsibility for my participation.
-                      I confirm that I am physically fit to participate and will follow all safety guidelines provided by the organizers.
+                      I confirm that I am physically fit and will follow all safety guidelines.
                       <span className="text-destructive font-medium"> (Required)</span>
                     </span>
                   </label>
                 </div>
+
+                {!isFormValid && (name || email || phone || nationality || emergencyContactName) && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Please fill in all required fields (<span className="text-destructive">*</span>) to register.
+                  </p>
+                )}
 
                 <Button
                   type="submit"
                   className="w-full"
                   size="lg"
                   data-testid="button-register"
-                  disabled={registerMutation.isPending || !waiverAccepted}
+                  disabled={registerMutation.isPending || !isFormValid}
                 >
                   {registerMutation.isPending ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Registering...</>
@@ -790,53 +745,63 @@ export default function RegisterPage() {
           <div className="mt-12 pt-8 border-t">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-4">Supported by</p>
             <div className="grid sm:grid-cols-2 gap-3">
-              {sponsors.map((s) => (
-                <div key={s.id} className="border rounded-xl p-4 bg-card">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">{SPONSOR_TYPE_ICONS[s.type] ?? "🏢"}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-sm">{s.name}</div>
-                      {s.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{s.description}</p>
-                      )}
-                      <div className="flex flex-wrap gap-3 mt-2">
-                        {s.website && (
-                          <a href={s.website} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                            🌐 Website
-                          </a>
+              {sponsors.map((s) => {
+                const scanToken = s.scanToken;
+                const qrValue = scanToken ? getSponsorScanUrl(scanToken) : (s.discountCode ?? "");
+                return (
+                  <div key={s.id} className="border rounded-xl p-4 bg-card">
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl">{SPONSOR_TYPE_ICONS[s.type] ?? "🏢"}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-sm">{s.name}</div>
+                        {s.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{s.description}</p>
                         )}
-                        {s.instagram && (
-                          <a href={s.instagram.startsWith("http") ? s.instagram : `https://instagram.com/${s.instagram.replace("@", "")}`}
-                            target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-pink-500 transition-colors">
-                            📸 {s.instagram.startsWith("@") ? s.instagram : `@${s.instagram}`}
-                          </a>
-                        )}
-                        {s.facebook && (
-                          <a href={s.facebook.startsWith("http") ? s.facebook : `https://facebook.com/${s.facebook}`}
-                            target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-blue-500 transition-colors">
-                            👍 Facebook
-                          </a>
-                        )}
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          {s.website && (
+                            <a href={s.website} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
+                              🌐 Website
+                            </a>
+                          )}
+                          {s.instagram && (
+                            <a href={s.instagram.startsWith("http") ? s.instagram : `https://instagram.com/${s.instagram.replace("@", "")}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-pink-500 transition-colors">
+                              📸 {s.instagram.startsWith("@") ? s.instagram : `@${s.instagram}`}
+                            </a>
+                          )}
+                          {s.facebook && (
+                            <a href={s.facebook.startsWith("http") ? s.facebook : `https://facebook.com/${s.facebook}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-blue-500 transition-colors">
+                              👍 Facebook
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    {(scanToken || s.discountCode) && (
+                      <div className="mt-4 pt-3 border-t flex items-center gap-4">
+                        <div className="bg-white p-2 rounded-lg border shadow-sm">
+                          <QRCodeSVG value={qrValue} size={80} />
+                        </div>
+                        <div>
+                          {s.discountCode && (
+                            <>
+                              <div className="text-xs text-muted-foreground mb-1">Discount code</div>
+                              <div className="font-mono font-bold text-lg tracking-widest">{s.discountCode}</div>
+                            </>
+                          )}
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {scanToken ? `Scan to visit ${s.name}` : `Show at ${s.name}`}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {s.discountCode && (
-                    <div className="mt-4 pt-3 border-t flex items-center gap-4">
-                      <div className="bg-white p-2 rounded-lg border shadow-sm">
-                        <QRCodeSVG value={s.discountCode} size={80} />
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Discount code</div>
-                        <div className="font-mono font-bold text-lg tracking-widest">{s.discountCode}</div>
-                        <div className="text-xs text-muted-foreground mt-1">Scan or show at {s.name}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

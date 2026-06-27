@@ -133,6 +133,7 @@ export const sponsorsTable = pgTable("sponsors", {
   logoUrl: text("logo_url"),
   description: text("description"),
   discountCode: text("discount_code"),
+  scanToken: text("scan_token").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -147,7 +148,7 @@ export const eventSponsorsTable = pgTable("event_sponsors", {
 export const sponsorImpressionsTable = pgTable("sponsor_impressions", {
   id: serial("id").primaryKey(),
   sponsorId: integer("sponsor_id").notNull().references(() => sponsorsTable.id, { onDelete: "cascade" }),
-  eventId: integer("event_id").notNull().references(() => eventsTable.id, { onDelete: "cascade" }),
+  eventId: integer("event_id").references(() => eventsTable.id, { onDelete: "cascade" }),
   pageType: text("page_type").notNull(),
   viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
 });

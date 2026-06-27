@@ -75,6 +75,7 @@ router.post("/events", async (req, res): Promise<void> => {
     .insert(eventsTable)
     .values({
       ...parsed.data,
+      category: parsed.data.category ?? "hiking",
       date: new Date(parsed.data.date),
       registrationToken: randomUUID(),
       photoToken: randomUUID(),

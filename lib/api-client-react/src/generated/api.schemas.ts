@@ -299,6 +299,8 @@ export interface Sponsor {
   description?: string | null;
   /** @nullable */
   discountCode?: string | null;
+  /** @nullable */
+  scanToken?: string | null;
   createdAt: string;
 }
 

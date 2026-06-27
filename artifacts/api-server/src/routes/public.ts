@@ -243,6 +243,23 @@ router.get("/public/photos/:token", async (req, res): Promise<void> => {
   res.json({ event, photos, sponsors });
 });
 
+// ─── Sponsor QR Scan (tracked, abuse-resistant via secret token) ──────────────
+router.get("/public/sponsor-scan/:token", async (req, res): Promise<void> => {
+  const token = req.params.token;
+  const [sponsor] = await db.select().from(sponsorsTable).where(eq(sponsorsTable.scanToken, token));
+  if (!sponsor) { res.status(404).json({ error: "Invalid scan link" }); return; }
+
+  // Record the scan (no event context — sponsor-level QR scan)
+  await db.insert(sponsorImpressionsTable).values({ sponsorId: sponsor.id, pageType: "qr_scan" });
+
+  // Redirect to website if available, else acknowledge
+  if (sponsor.website) {
+    res.redirect(302, sponsor.website);
+  } else {
+    res.json({ name: sponsor.name, message: "Scan recorded. Thank you!" });
+  }
+});
+
 router.post("/public/photos/:token", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
 
