@@ -1,4 +1,5 @@
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { useCreateEvent, useListEventTypes, EventInputDifficulty } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -103,7 +104,7 @@ export default function CreateEvent() {
                     <FormItem>
                       <FormLabel>Event Title *</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. Sunrise Peak Hike" {...field} />
+                        <Input dir="auto" placeholder="e.g. Sunrise Peak Hike" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

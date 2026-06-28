@@ -81,7 +81,9 @@
     "@uppy/core": "^5.2.0",
     "@uppy/dashboard": "^5.1.1",
     "@uppy/react": "^5.2.0",
+    "i18next": "^26.3.3",
     "qrcode": "^1.5.4",
-    "qrcode.react": "^4.2.0"
+    "qrcode.react": "^4.2.0",
+    "react-i18next": "^17.0.8"
   }
 }

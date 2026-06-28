@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useListSponsors,
   useListSponsorsAnalytics,
@@ -192,7 +193,7 @@ function SponsorForm({ initial, onSubmit, isPending, submitLabel }: {
     <div className="space-y-4">
       <div>
         <Label>Sponsor / Location name</Label>
-        <Input className="mt-1" placeholder="e.g. Summit Café" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+        <Input dir="auto" className="mt-1" placeholder="e.g. Summit Café" value={form.name} onChange={(e) => set("name", e.target.value)} required />
       </div>
       <div>
         <Label>Type</Label>

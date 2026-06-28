@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -230,4 +230,10 @@
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
+}
+
+/* Arabic language — use Cairo font for better Arabic rendering */
+:root[lang="ar"] body,
+:root[lang="ar"] {
+  font-family: 'Cairo', 'Plus Jakarta Sans', sans-serif;
 }

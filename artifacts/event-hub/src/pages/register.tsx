@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { useLanguage } from "@/hooks/use-language";
 import { useParams, useSearch } from "wouter";
 import {
   useGetEventByToken,
@@ -194,6 +196,7 @@ export default function RegisterPage() {
   const search = useSearch();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { lang, toggleLanguage } = useLanguage();
 
   const refToken = new URLSearchParams(search).get("ref") ?? undefined;
 
@@ -381,6 +384,16 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Language toggle — floating */}
+      <button
+        onClick={toggleLanguage}
+        className="fixed top-4 end-4 z-50 flex items-center gap-0.5 text-xs font-semibold rounded-full border px-2.5 py-1 bg-background/80 backdrop-blur hover:bg-muted transition-colors select-none shadow-sm"
+        title="Switch language / تغيير اللغة"
+      >
+        <span className={lang === "en" ? "text-foreground" : "text-muted-foreground"}>EN</span>
+        <span className="text-muted-foreground mx-0.5">/</span>
+        <span className={lang === "ar" ? "text-foreground" : "text-muted-foreground"}>AR</span>
+      </button>
       {/* Already-registered popup */}
       <Dialog open={alreadyRegistered} onOpenChange={(o) => { if (!o) setAlreadyRegistered(false); }}>
         <DialogContent className="max-w-sm text-center">
@@ -534,6 +547,7 @@ export default function RegisterPage() {
                   <Label htmlFor="name">Full name <span className="text-destructive">*</span></Label>
                   <Input
                     id="name"
+                    dir="auto"
                     data-testid="input-name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -553,8 +567,8 @@ export default function RegisterPage() {
                     value={fullNameAr}
                     onChange={(e) => setFullNameAr(e.target.value)}
                     placeholder="الاسم بالعربي"
-                    dir="rtl"
-                    className="mt-1 text-right"
+                    dir="auto"
+                    className="mt-1"
                   />
                 </div>
 
@@ -564,6 +578,7 @@ export default function RegisterPage() {
                   <Input
                     id="email"
                     type="email"
+                    dir="auto"
                     data-testid="input-email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -594,6 +609,7 @@ export default function RegisterPage() {
                     <Input
                       id="phone"
                       type="tel"
+                      dir="auto"
                       data-testid="input-phone"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
@@ -636,6 +652,7 @@ export default function RegisterPage() {
                   </div>
                   {nationality === "other" && (
                     <Input
+                      dir="auto"
                       value={nationalityOther}
                       onChange={(e) => setNationalityOther(e.target.value)}
                       placeholder="Please specify your nationality"
@@ -663,6 +680,7 @@ export default function RegisterPage() {
                   </div>
                   {hasMedicalConditions && (
                     <Textarea
+                      dir="auto"
                       value={medicalDetails}
                       onChange={(e) => setMedicalDetails(e.target.value)}
                       placeholder="Please describe your medical condition(s)…"
@@ -693,6 +711,7 @@ export default function RegisterPage() {
                     <Input
                       id="emergencyPhone"
                       type="tel"
+                      dir="auto"
                       value={emergencyContactPhone}
                       onChange={(e) => setEmergencyContactPhone(e.target.value)}
                       placeholder="+962 7X XXX XXXX"

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useListEvents,
   useDeleteEvent,
@@ -184,7 +185,7 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <Label>Title</Label>
-              <Input className="mt-1" value={form.title} onChange={(e) => set("title", e.target.value)} />
+              <Input dir="auto" className="mt-1" value={form.title} onChange={(e) => set("title", e.target.value)} />
             </div>
             <div>
               <Label>Event Type</Label>
@@ -240,7 +241,7 @@ function EditEventDialog({ event, open, onClose }: EditEventDialogProps) {
             </div>
             <div>
               <Label>Distance</Label>
-              <Input className="mt-1" placeholder="e.g. 5.2 miles" value={form.distance} onChange={(e) => set("distance", e.target.value)} />
+              <Input dir="auto" className="mt-1" placeholder="e.g. 5.2 miles" value={form.distance} onChange={(e) => set("distance", e.target.value)} />
             </div>
             <div>
               <Label>Loyalty Points</Label>
@@ -369,76 +370,45 @@ function EventSponsorsPanel({ eventId }: { eventId: number }) {
   );
 }
 
-// ─── Registrations Panel ──────────────────────────────────────────────────────
+// ─── Add Participant Panel (module-scope to prevent focus-loss on re-render) ───
 
-function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; registrationToken: string }) {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const { data: registrations, isLoading } = useListEventRegistrations(eventId);
+interface AddParticipantPanelProps {
+  eventId: number;
+  showAddPanel: boolean;
+  setShowAddPanel: (v: boolean) => void;
+  addSearch: string;
+  setAddSearch: (v: string) => void;
+  participantSearchResults: Array<{ id: number; name: string; phone?: string | null; email: string }> | undefined;
+  addParticipantMutation: { isPending: boolean; mutate: (args: { phone: string; data: { eventId: number; status: string } }) => void };
+  onNoPhone: () => void;
+}
 
-  // Search + add existing participant
-  const [addSearch, setAddSearch] = useState("");
-  const [showAddPanel, setShowAddPanel] = useState(false);
-
-  const { data: participantSearchResults } = useAdminSearchParticipants(
-    { q: addSearch },
-    { query: { enabled: showAddPanel && addSearch.trim().length >= 2 } }
-  );
-
-  const addParticipantMutation = useAdminAddParticipantToEvent({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "Participant added to event" });
-        setAddSearch("");
-        setShowAddPanel(false);
-        queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/registrations`] });
-        queryClient.invalidateQueries({ queryKey: getListEventsQueryKey() });
-      },
-      onError: (err: unknown) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed to add participant";
-        toast({ title: "Error", description: msg, variant: "destructive" });
-      },
-    },
-  });
-
-  const statusMutation = useUpdateRegistrationStatus({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/registrations`] });
-        queryClient.invalidateQueries({ queryKey: getListEventsQueryKey() });
-      },
-      onError: () => toast({ title: "Action failed", variant: "destructive" }),
-    },
-  });
-
-  const setStatus = (regId: number, status: "confirmed" | "waitlist" | "cancelled" | "pending") =>
-    statusMutation.mutate({ id: regId, data: { status } });
-
-  const getReferralLink = (refToken: string | null | undefined) => {
-    if (!refToken) return null;
-    return `${window.location.origin}${import.meta.env.BASE_URL}r/${registrationToken}?ref=${refToken}`;
-  };
-
-  const pending    = registrations?.filter((r) => r.status === "pending")    ?? [];
-  const confirmed  = registrations?.filter((r) => r.status === "confirmed")  ?? [];
-  const waitlisted = registrations?.filter((r) => r.status === "waitlist")   ?? [];
-  const cancelled  = registrations?.filter((r) => r.status === "cancelled")  ?? [];
-
-  // ── Add-participant inline panel ──
-  const addPanel = (
+function AddParticipantPanel({
+  eventId,
+  showAddPanel,
+  setShowAddPanel,
+  addSearch,
+  setAddSearch,
+  participantSearchResults,
+  addParticipantMutation,
+  onNoPhone,
+}: AddParticipantPanelProps) {
+  const { t } = useTranslation();
+  return (
     <div className="mb-2">
       {!showAddPanel ? (
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowAddPanel(true)}>
-          <Plus className="w-3 h-3" /> Add Existing Participant
+          <Plus className="w-3 h-3" /> {t("admin.addExistingParticipant")}
         </Button>
       ) : (
         <div className="bg-muted/30 rounded-lg p-3 space-y-2 border">
           <div className="flex items-center gap-2">
             <Input
               autoFocus
+              dir="auto"
               value={addSearch}
               onChange={(e) => setAddSearch(e.target.value)}
-              placeholder="Search by name, email, or phone…"
+              placeholder={t("admin.searchParticipantPlaceholder")}
               className="h-8 text-sm flex-1"
             />
             <Button
@@ -464,46 +434,122 @@ function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; r
                       className="h-6 text-xs px-2 shrink-0"
                       disabled={addParticipantMutation.isPending}
                       onClick={() => {
-                        if (!p.phone) {
-                          toast({ title: "No phone number", description: "This participant needs a phone number to be added.", variant: "destructive" });
-                          return;
-                        }
+                        if (!p.phone) { onNoPhone(); return; }
                         addParticipantMutation.mutate({
                           phone: encodeURIComponent(p.phone),
                           data: { eventId, status: "confirmed" },
                         });
                       }}
                     >
-                      {addParticipantMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                      {addParticipantMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : t("common.add")}
                     </Button>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground italic">No participants found.</p>
+              <p className="text-xs text-muted-foreground italic">{t("admin.noParticipantsFound")}</p>
             )
           )}
           {addSearch.trim().length < 2 && (
-            <p className="text-xs text-muted-foreground">Type at least 2 characters to search.</p>
+            <p className="text-xs text-muted-foreground">{t("admin.typeAtLeast2")}</p>
           )}
         </div>
       )}
     </div>
   );
+}
 
-  if (isLoading) return <div className="text-xs text-muted-foreground">Loading…</div>;
+// ─── Registrations Panel ──────────────────────────────────────────────────────
+
+function RegistrationsPanel({ eventId, registrationToken }: { eventId: number; registrationToken: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { t } = useTranslation();
+  const { data: registrations, isLoading } = useListEventRegistrations(eventId);
+
+  // Search + add existing participant
+  const [addSearch, setAddSearch] = useState("");
+  const [showAddPanel, setShowAddPanel] = useState(false);
+
+  const { data: participantSearchResults } = useAdminSearchParticipants(
+    { q: addSearch },
+    { query: { enabled: showAddPanel && addSearch.trim().length >= 2 } }
+  );
+
+  const addParticipantMutation = useAdminAddParticipantToEvent({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: t("admin.participantAdded") });
+        setAddSearch("");
+        setShowAddPanel(false);
+        queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/registrations`] });
+        queryClient.invalidateQueries({ queryKey: getListEventsQueryKey() });
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed to add participant";
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  const statusMutation = useUpdateRegistrationStatus({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/registrations`] });
+        queryClient.invalidateQueries({ queryKey: getListEventsQueryKey() });
+      },
+      onError: () => toast({ title: t("admin.actionFailed"), variant: "destructive" }),
+    },
+  });
+
+  const setStatus = (regId: number, status: "confirmed" | "waitlist" | "cancelled" | "pending") =>
+    statusMutation.mutate({ id: regId, data: { status } });
+
+  const getReferralLink = (refToken: string | null | undefined) => {
+    if (!refToken) return null;
+    return `${window.location.origin}${import.meta.env.BASE_URL}r/${registrationToken}?ref=${refToken}`;
+  };
+
+  const pending    = registrations?.filter((r) => r.status === "pending")    ?? [];
+  const confirmed  = registrations?.filter((r) => r.status === "confirmed")  ?? [];
+  const waitlisted = registrations?.filter((r) => r.status === "waitlist")   ?? [];
+  const cancelled  = registrations?.filter((r) => r.status === "cancelled")  ?? [];
+
+  const handleNoPhone = () => {
+    toast({ title: t("admin.noPhone"), description: t("admin.noPhoneDesc"), variant: "destructive" });
+  };
+
+  if (isLoading) return <div className="text-xs text-muted-foreground">{t("common.loading")}</div>;
   if (!registrations || registrations.length === 0) {
     return (
       <div className="space-y-3">
-        {addPanel}
-        <p className="text-xs text-muted-foreground italic">No registrations yet.</p>
+        <AddParticipantPanel
+          eventId={eventId}
+          showAddPanel={showAddPanel}
+          setShowAddPanel={setShowAddPanel}
+          addSearch={addSearch}
+          setAddSearch={setAddSearch}
+          participantSearchResults={participantSearchResults}
+          addParticipantMutation={addParticipantMutation}
+          onNoPhone={handleNoPhone}
+        />
+        <p className="text-xs text-muted-foreground italic">{t("admin.noRegistrationsYet")}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {addPanel}
+      <AddParticipantPanel
+        eventId={eventId}
+        showAddPanel={showAddPanel}
+        setShowAddPanel={setShowAddPanel}
+        addSearch={addSearch}
+        setAddSearch={setAddSearch}
+        participantSearchResults={participantSearchResults}
+        addParticipantMutation={addParticipantMutation}
+        onNoPhone={handleNoPhone}
+      />
       {pending.length > 0 && (
         <div>
           <div className="text-xs font-medium text-amber-600 uppercase tracking-wide mb-2">

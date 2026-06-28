@@ -1,0 +1,47 @@
+#5 - Arabic / English Bilingual Support + Input Fixes
+What & Why
+Two closely related problems solved together:
+
+Input focus bug — typing a letter in certain admin form fields causes focus to jump out, forcing the user to re-click after every keystroke. Root cause: addPanel JSX (containing a controlled Input) is defined as a variable inside RegistrationsPanel's render body, so it remounts on every state change. Fix: extract it to module-scope component.
+
+Bilingual input & UI — every form field in the app must accept both Arabic and English text naturally (correct cursor direction, no visual glitches). A language toggle (EN / AR) switches the entire UI — all labels, buttons, headings, placeholders, nav items, error messages, and status text — to Arabic, with full RTL layout. The selected language is remembered across reloads.
+
+Done looks like
+Typing in any field (event creation, registration, admin search, participant forms, sponsor forms) works without focus loss — no re-clicking required
+Every text input detects the script direction of what the user types and switches cursor/alignment automatically (dir="auto")
+A language toggle (EN / AR) appears in the nav bar and on public pages (registration, check-in)
+Switching to Arabic flips the entire layout to RTL — sidebar, nav, cards, forms all mirror correctly
+All UI strings (labels, buttons, headings, placeholders, toasts, error messages) are translated to Arabic
+Arabic uses a clear Arabic web font (e.g. Cairo or IBM Plex Arabic)
+Selected language persists in localStorage; public pages default to Arabic if the browser locale is Arabic
+API error strings surfacing in toasts are mapped to translated equivalents on the frontend
+Out of scope
+Translating user-entered data (event titles, participant names stored in DB — stored as typed)
+Badge / PDF print translation
+Server-side i18n of API response bodies (handled by frontend key mapping)
+RTL reflow of data tables / charts (layout flips, data content stays)
+Steps
+Fix focus-loss bug — Extract addPanel from inside RegistrationsPanel's render body into a standalone module-scope component that receives its state and callbacks as props. Audit the other pages (register.tsx, participants.tsx) for the same pattern and fix any found.
+Add dir="auto" to all text inputs — Set dir="auto" on every <Input>, <Textarea>, and freeform text field across all pages so Arabic and English content self-align correctly without forcing a fixed direction.
+Install i18n library — Add i18next and react-i18next to the event-hub package. Create an I18nProvider wrapping the app root, a language-context hook that persists locale to localStorage and sets the <html lang dir> attribute, and initialise with en and ar namespaces.
+Extract English strings — Replace every hardcoded English string in all 15 pages and the layout/nav components with t("key") calls. Create src/i18n/en.json with all keys organised by page namespace.
+Create Arabic translation file — Create src/i18n/ar.json with accurate Modern Standard Arabic (فصحى) translations for every key, appropriate for an outdoor sports/events platform.
+Global RTL layout — Apply Tailwind rtl: variants to the root layout, sidebar, navbar, cards, dialogs, and form components so the page mirrors correctly when Arabic is active. Add the tailwindcss-rtl plugin if needed.
+Language toggle UI — Add an EN / AR pill toggle to the admin nav bar and as a floating button on the public registration and sponsor check-in pages.
+Frontend error message mapping — Map known API error strings ("Already registered", "Event not found", etc.) to i18n keys so toasts and inline errors appear in the active language.
+Relevant files
+artifacts/event-hub/src/pages/admin.tsx
+artifacts/event-hub/src/pages/register.tsx
+artifacts/event-hub/src/pages/participants.tsx
+artifacts/event-hub/src/pages/sponsors.tsx
+artifacts/event-hub/src/pages/create-event.tsx
+artifacts/event-hub/src/pages/home.tsx
+artifacts/event-hub/src/pages/sponsor-checkin.tsx
+artifacts/event-hub/src/pages/admin-audit-log.tsx
+artifacts/event-hub/src/pages/admin-completed-events.tsx
+artifacts/event-hub/src/pages/admin-event-types.tsx
+artifacts/event-hub/src/pages/admin-media-banners.tsx
+artifacts/event-hub/src/components/layout.tsx
+artifacts/event-hub/src/main.tsx
+artifacts/event-hub/package.json
+artifacts/event-hub/tailwind.config.ts

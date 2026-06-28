@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useAdminListParticipants,
   useAdminSearchParticipants,
@@ -689,6 +690,7 @@ export default function ParticipantsPage() {
         <div className="relative mb-2 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
+            dir="auto"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
             placeholder="Search by name, email, or phone…"
